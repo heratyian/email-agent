@@ -1,0 +1,36 @@
+[project]
+name = "email-agent"
+version = "0.1.0"
+description = "Privacy-conscious, profile-driven email triage and drafting"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12",
+  "google-api-python-client>=2.0",
+  "google-auth-oauthlib>=1.2",
+  "langchain>=1.0",
+  "langchain-ollama>=1.0",
+  "langchain-openai>=1.0",
+  "pydantic>=2.10",
+  "pydantic-settings>=2.6",
+  "pyyaml>=6.0",
+  "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.9"]
+
+[project.scripts]
+email-agent = "email_agent.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
