@@ -68,6 +68,24 @@ If Google says the app "has not completed the Google verification process" and c
 - wait a minute after adding the test user, then retry the command; and
 - choose the exact approved account when Google asks which account to use.
 
+### Error 403: Gmail API is disabled (`accessNotConfigured`)
+
+If authorization succeeds but the command returns a message like:
+
+```text
+Gmail API has not been used in project PROJECT_ID before or it is disabled.
+```
+
+the OAuth client is valid, but the Gmail API is not enabled in the Google Cloud project that owns it:
+
+1. Copy the project ID or project number from the error message.
+2. Open the [Gmail API page](https://console.cloud.google.com/apis/library/gmail.googleapis.com) in Google Cloud Console.
+3. Confirm that the selected project matches the project identified in the error.
+4. Click **Enable**.
+5. Wait a few minutes for the change to propagate, then rerun the `inbox` or `process` command.
+
+You do not need to recreate `gmail_credentials.json`, remove `gmail_token.json`, or repeat authorization. The existing OAuth token should work after the Gmail API is enabled.
+
 ### OAuth client file not found
 
 Confirm the downloaded file is named and located exactly at:
