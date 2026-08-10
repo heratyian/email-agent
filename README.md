@@ -7,6 +7,24 @@ A profile-driven Python/LangChain email assistant that retrieves unread mail, cl
 ```bash
 uv sync --extra dev
 cp .env.example .env
+```
+
+### Initialize local configuration
+
+Runtime mailbox configuration, agent profiles, and use-case-specific prompts are private and ignored by Git. Initialize them from the sanitized examples after cloning:
+
+```bash
+cp examples/accounts.yaml accounts.yaml
+mkdir -p profiles prompts
+cp -R examples/profiles/. profiles/
+cp -R examples/prompts/. prompts/
+```
+
+Then edit `accounts.yaml`, the files under `profiles/`, and the corresponding prompt directories for your own mailboxes and behavior. Store credentials only in `.env` or the ignored `secrets/` directory—never in YAML profiles or prompt files.
+
+Validate the resulting configuration before connecting to a mailbox:
+
+```bash
 uv run email-agent config validate
 uv run email-agent accounts
 uv run email-agent process --profile receipt_ai_support --limit 10
@@ -14,11 +32,11 @@ uv run email-agent process --profile receipt_ai_support --limit 10
 
 ### LLM Model Setup
 
-The default profiles use Ollama (`qwen3`). Run Ollama locally or change `model.provider` and `model.model` in a profile to `openai` and an available model. 
+The default profiles use Ollama (`qwen3`). Run Ollama locally or change `model.provider` and `model.model` in a profile to `openai` and an available model.
 
 ### Email Setup
 
-- See [Gmail Oauth Setup](docs/gmail_oauth_setup.md) for GMail.
+- See [Gmail OAuth Setup](docs/gmail_oauth_setup.md) for Gmail.
 
 ### CLI Commands
 
@@ -46,4 +64,3 @@ Configuration lives in `profiles/`; all prompt content lives in `prompts/`. Cred
 uv run pytest
 uv run ruff check .
 ```
-

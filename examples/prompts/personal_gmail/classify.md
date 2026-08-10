@@ -1,0 +1,1 @@
+Classify the conversation using the required schema. Use needs_reply for direct personal questions or requests, informational for useful mail needing no response, and automated/newsletter/spam as appropriate. Flag sensitive or consequential decisions for escalation.

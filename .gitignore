@@ -9,3 +9,11 @@ secrets/
 credentials.json
 token.json
 
+# Local mailbox and agent configuration
+/accounts.yaml
+/profiles/*.yaml
+/prompts/*/
+
+# Keep generic application-owned prompts
+!/prompts/shared/
+!/prompts/shared/**
