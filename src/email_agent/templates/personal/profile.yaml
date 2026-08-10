@@ -1,0 +1,27 @@
+id: "{{PROFILE_ID}}"
+name: "{{PROFILE_NAME}}"
+version: 1
+account: "{{ACCOUNT_ID}}"
+model:
+  provider: "{{MODEL_PROVIDER}}"
+  model: "{{MODEL_NAME}}"
+  temperature: 0
+prompts:
+  version: 1
+  system: "prompts/{{PROFILE_ID}}/system.md"
+  classify: "prompts/{{PROFILE_ID}}/classify.md"
+  reply: "prompts/{{PROFILE_ID}}/reply.md"
+behavior:
+  default_tone: warm and concise
+  max_reply_words: 120
+  escalation_rules:
+    - financial commitments
+    - legal matters
+    - sensitive personal information
+  ignored_rules:
+    - spam
+    - newsletters
+    - automated receipts
+safety:
+  allow_drafts: true
+  allow_send: false

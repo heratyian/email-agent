@@ -11,16 +11,42 @@ cp .env.example .env
 
 ### Initialize local configuration
 
-Runtime mailbox configuration, agent profiles, and use-case-specific prompts are private and ignored by Git. Initialize them from the sanitized examples after cloning:
+Runtime mailbox configuration, generated agent profiles, and use-case-specific prompts are private and ignored by Git. Generate a Gmail account configuration with:
 
 ```bash
-cp examples/accounts.yaml accounts.yaml
-mkdir -p profiles prompts
-cp -R examples/profiles/. profiles/
-cp -R examples/prompts/. prompts/
+uv run email-agent account init personal_gmail --provider gmail
 ```
 
-Then edit `accounts.yaml`, the files under `profiles/`, and the corresponding prompt directories for your own mailboxes and behavior. Store credentials only in `.env` or the ignored `secrets/` directory—never in YAML profiles or prompt files.
+This creates the ignored `accounts.yaml` and points OAuth files at `secrets/personal_gmail_credentials.json` and `secrets/personal_gmail_token.json`. For an IMAP mailbox:
+
+```bash
+uv run email-agent account init customer_support \
+  --provider imap \
+  --email support@example.com \
+  --imap-host imap.example.com
+```
+
+IMAP credential values remain in `.env`; the generated YAML contains only their environment-variable names. After creating an account, generate a profile and its editable prompts from either the `personal` or `customer_support` template:
+
+```bash
+uv run email-agent profile init personal \
+  --account personal_gmail \
+  --template personal \
+  --provider openai \
+  --model gpt-5.4-mini
+```
+
+For a support mailbox:
+
+```bash
+uv run email-agent profile init customer_support \
+  --account customer_support \
+  --template customer_support \
+  --provider ollama \
+  --model qwen3
+```
+
+The generator requires an explicit model provider (`openai`, `ollama`, or `compatible`) and model name; templates do not choose a model. It creates `profiles/<name>.yaml` and `prompts/<name>/`, and refuses to overwrite existing files unless `--force` is supplied. Edit the generated profile and prompts for your use case. Store credentials only in `.env` or the ignored `secrets/` directory—never in YAML profiles or prompt files.
 
 Validate the resulting configuration before connecting to a mailbox:
 

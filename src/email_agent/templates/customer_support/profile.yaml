@@ -1,0 +1,43 @@
+id: "{{PROFILE_ID}}"
+name: "{{PROFILE_NAME}}"
+version: 1
+account: "{{ACCOUNT_ID}}"
+model:
+  provider: "{{MODEL_PROVIDER}}"
+  model: "{{MODEL_NAME}}"
+  temperature: 0
+prompts:
+  version: 1
+  system: "prompts/{{PROFILE_ID}}/system.md"
+  classify: "prompts/{{PROFILE_ID}}/classify.md"
+  reply: "prompts/{{PROFILE_ID}}/reply.md"
+behavior:
+  default_tone: friendly, clear, and concise
+  max_reply_words: 150
+  intents:
+    - bug_report
+    - billing_question
+    - feature_request
+    - how_to
+    - account_problem
+    - login_problem
+    - refund_request
+    - sales_question
+    - spam
+    - unknown
+  escalation_rules:
+    - billing dispute
+    - refund request
+    - security issue
+    - legal complaint
+    - data deletion request
+    - angry customer
+    - unknown product behavior
+  ignored_rules:
+    - spam
+    - newsletters
+    - automated receipts
+  company_context: Replace this with accurate company and product context.
+safety:
+  allow_drafts: true
+  allow_send: false

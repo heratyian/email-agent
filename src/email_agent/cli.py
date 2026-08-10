@@ -6,15 +6,38 @@ from typing import Annotated
 import typer
 
 from email_agent.agents import EmailAgents
-from email_agent.config import Settings
+from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.llm import get_model
 from email_agent.mail import create_mail_provider
 from email_agent.pipeline import EmailPipeline
+from email_agent.scaffolding import (
+    AccountProvider,
+    ModelProvider,
+    ProfileTemplate,
+    generate_account,
+    generate_profile,
+)
 from email_agent.storage import Database
 
-app = typer.Typer(no_args_is_help=True, help="Safe, profile-driven email triage and drafting.")
+app = typer.Typer(
+    no_args_is_help=True,
+    help="Safe, profile-driven email triage and drafting.",
+    epilog="""
+Getting started:
+
+  email-agent account init personal_gmail --provider gmail
+
+  email-agent profile init personal --account personal_gmail --template personal --provider openai --model gpt-5.4-mini
+
+Then validate with: email-agent config validate
+""",
+)
 config_app = typer.Typer(help="Configuration utilities.")
+profile_app = typer.Typer(help="Create and manage agent profiles.")
+account_app = typer.Typer(help="Create and manage mailbox accounts.")
 app.add_typer(config_app, name="config")
+app.add_typer(profile_app, name="profile")
+app.add_typer(account_app, name="account")
 
 
 def _components(profile_name: str, with_agents: bool = True):
@@ -28,13 +51,68 @@ def _components(profile_name: str, with_agents: bool = True):
 
 @app.command()
 def accounts():
+    """List configured mailbox accounts without connecting to them."""
     settings = Settings()
     for account_id, account in settings.accounts.items():
         typer.echo(f"{account_id}: {account.provider} ({account.email or 'OAuth account'})")
 
 
+@account_app.command("init")
+def init_account(
+    name: Annotated[str, typer.Argument(help="Local account ID, such as 'personal_gmail'.")],
+    provider: Annotated[AccountProvider, typer.Option(help="Mailbox provider.")],
+    email: Annotated[str | None, typer.Option(help="Mailbox address for IMAP.")] = None,
+    imap_host: Annotated[str | None, typer.Option(help="IMAP server hostname.")] = None,
+    imap_port: Annotated[int, typer.Option(help="IMAP SSL port.")] = 993,
+    smtp_host: Annotated[
+        str | None, typer.Option(help="Optional SMTP hostname for future use.")
+    ] = None,
+    smtp_port: Annotated[int, typer.Option(help="SMTP SSL port.")] = 465,
+    username_env: Annotated[
+        str | None, typer.Option(help="Environment variable containing the IMAP username.")
+    ] = None,
+    password_env: Annotated[
+        str | None, typer.Option(help="Environment variable containing the IMAP password.")
+    ] = None,
+    credentials_file: Annotated[
+        str | None, typer.Option(help="Gmail OAuth client JSON path.")
+    ] = None,
+    token_file: Annotated[str | None, typer.Option(help="Gmail OAuth token path.")] = None,
+    force: Annotated[bool, typer.Option(help="Replace an existing account entry.")] = False,
+):
+    """Create or add a mailbox account in the private accounts.yaml file."""
+    try:
+        generated = generate_account(
+            PROJECT_ROOT,
+            name,
+            provider,
+            email=email,
+            imap_host=imap_host,
+            imap_port=imap_port,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            username_env=username_env,
+            password_env=password_env,
+            credentials_file=credentials_file,
+            token_file=token_file,
+            force=force,
+        )
+    except (TypeError, ValueError, FileExistsError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"Created account '{generated.account_id}' in {generated.path.name}.")
+    if provider is AccountProvider.GMAIL:
+        typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
+    else:
+        typer.echo("Set the generated username and password environment variables in .env.")
+    typer.echo(
+        f"\nNext: email-agent profile init PROFILE_NAME --account {name} --template personal"
+    )
+
+
 @config_app.command("validate")
 def validate_config():
+    """Validate accounts, profiles, prompts, and the draft-only safety invariant."""
     settings = Settings()
     profiles = sorted((settings.root / "profiles").glob("*.yaml"))
     for path in profiles:
@@ -47,8 +125,44 @@ def validate_config():
     typer.echo(f"Validated {len(profiles)} profiles; sending is disabled.")
 
 
+@profile_app.command("init")
+def init_profile(
+    name: Annotated[str, typer.Argument(help="Local profile ID, such as 'work'.")],
+    account: Annotated[str, typer.Option(help="Account ID already defined in accounts.yaml.")],
+    provider: Annotated[ModelProvider, typer.Option(help="Model provider.")],
+    model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
+    template: Annotated[
+        ProfileTemplate, typer.Option(help="Built-in profile and prompt template.")
+    ] = ProfileTemplate.PERSONAL,
+    display_name: Annotated[str | None, typer.Option(help="Human-readable agent name.")] = None,
+    force: Annotated[bool, typer.Option(help="Overwrite an existing generated profile.")] = False,
+):
+    """Create a private profile and editable prompts from a built-in template."""
+    try:
+        generated = generate_profile(
+            Settings().root,
+            name,
+            account,
+            template,
+            display_name=display_name,
+            model_provider=provider,
+            model=model,
+            force=force,
+        )
+    except (TypeError, ValueError, FileExistsError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"Created profile: {generated.profile.relative_to(Settings().root)}")
+    typer.echo(f"Created prompts: {generated.prompts[0].parent.relative_to(Settings().root)}/")
+    typer.echo("\nNext:")
+    typer.echo(f"1. Edit the generated profile and prompts for '{name}'.")
+    typer.echo("2. Validate: email-agent config validate")
+    typer.echo(f"3. Run: email-agent inbox --profile {name}")
+
+
 @app.command()
 def inbox(profile: Annotated[str, typer.Option()], limit: int = 20):
+    """List new message headers without invoking an LLM."""
     _, selected, provider, database, _ = _components(profile, with_agents=False)
     messages = [
         m
@@ -76,6 +190,7 @@ def _render(result):
 
 @app.command()
 def process(profile: Annotated[str, typer.Option()], limit: int = 20):
+    """Classify new messages and save suggested replies to the local review queue."""
     _, selected, provider, database, agents = _components(profile)
     typer.echo(f"Connecting to {selected.name}...")
     results = EmailPipeline(selected, provider, agents, database).process(limit)
@@ -86,6 +201,7 @@ def process(profile: Annotated[str, typer.Option()], limit: int = 20):
 
 @app.command()
 def monitor(profile: Annotated[str, typer.Option()], interval: int = 300, limit: int = 20):
+    """Poll a mailbox until interrupted."""
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
     _, selected, provider, database, agents = _components(profile)
@@ -102,6 +218,7 @@ def monitor(profile: Annotated[str, typer.Option()], interval: int = 300, limit:
 
 @app.command()
 def drafts(profile: Annotated[str | None, typer.Option()] = None):
+    """List locally saved draft suggestions."""
     settings = Settings()
     account_id = settings.profile(profile).account if profile else None
     for row in Database(settings.database_path).list_drafts(account_id):
@@ -112,6 +229,7 @@ def drafts(profile: Annotated[str | None, typer.Option()] = None):
 
 @app.command("show")
 def show_message(message_id: int):
+    """Show persisted message metadata and classification."""
     settings = Settings()
     row = Database(settings.database_path).show_message(message_id)
     if not row:
@@ -124,6 +242,7 @@ def show_message(message_id: int):
 
 @app.command("draft")
 def show_draft(message_id: int):
+    """Show the local draft associated with a processed message."""
     settings = Settings()
     rows = [
         row
@@ -140,6 +259,7 @@ def show_draft(message_id: int):
 
 @app.command()
 def approve(message_id: int):
+    """Mark a local draft approved without sending it."""
     settings = Settings()
     if not Database(settings.database_path).approve(message_id):
         raise typer.BadParameter("draft not found")
