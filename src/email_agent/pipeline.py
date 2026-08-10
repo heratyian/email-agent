@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from time import perf_counter
 
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
@@ -8,6 +9,8 @@ from email_agent.models import Draft, DraftReply, EmailClassification, EmailMess
 
 @dataclass
 class ProcessedEmail:
+    """One successfully processed message and its persisted outputs."""
+
     local_id: int
     message: EmailMessage
     classification: EmailClassification
@@ -15,7 +18,69 @@ class ProcessedEmail:
     draft: Draft | None
 
 
+class InboxGroup(StrEnum):
+    """User-facing inbox sections from the personal Gmail user story."""
+
+    NEEDS_REPLY = "Needs Reply"
+    IMPORTANT = "Important"
+    INFORMATIONAL = "Informational"
+    IGNORED = "Ignored"
+
+
+INBOX_GROUP_ORDER = (
+    InboxGroup.NEEDS_REPLY,
+    InboxGroup.IMPORTANT,
+    InboxGroup.INFORMATIONAL,
+    InboxGroup.IGNORED,
+)
+
+
+@dataclass(frozen=True)
+class TriagedEmail:
+    """A message paired with its read-only inbox classification."""
+
+    message: EmailMessage
+    classification: EmailClassification
+    group: InboxGroup
+
+
+def inbox_group(classification: EmailClassification) -> InboxGroup:
+    """Map the detailed classification schema to one user-facing inbox section."""
+    if classification.requires_reply:
+        return InboxGroup.NEEDS_REPLY
+    if classification.category in {"urgent", "unknown"} or classification.priority in {
+        "high",
+        "urgent",
+    }:
+        return InboxGroup.IMPORTANT
+    if classification.category in {"spam", "newsletter"}:
+        return InboxGroup.IGNORED
+    return InboxGroup.INFORMATIONAL
+
+
+def triage_inbox(provider, agents, database, limit: int = 20) -> list[TriagedEmail]:
+    """Classify unprocessed mail without persisting results or generating drafts."""
+    if limit < 1:
+        return []
+    results: list[TriagedEmail] = []
+    for message in provider.get_new_messages(limit):
+        if database.is_processed(message.account_id, message.provider_id):
+            continue
+        thread = provider.get_thread(message.provider_id)
+        classification = agents.classify(message, thread)
+        results.append(
+            TriagedEmail(
+                message=message,
+                classification=classification,
+                group=inbox_group(classification),
+            )
+        )
+    return results
+
+
 class EmailPipeline:
+    """Deterministic orchestration around classification and optional drafting."""
+
     def __init__(self, profile, provider, agents, database):
         self.profile, self.provider, self.agents, self.database = (
             profile,
@@ -25,7 +90,9 @@ class EmailPipeline:
         )
 
     def process(self, limit: int = 20) -> list[ProcessedEmail]:
-        results = []
+        if limit < 1:
+            return []
+        results: list[ProcessedEmail] = []
         for message in self.provider.get_new_messages(limit):
             if self.database.is_processed(message.account_id, message.provider_id):
                 continue

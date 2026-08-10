@@ -9,7 +9,7 @@ from email_agent.agents import EmailAgents
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.llm import get_model
 from email_agent.mail import create_mail_provider
-from email_agent.pipeline import EmailPipeline
+from email_agent.pipeline import INBOX_GROUP_ORDER, EmailPipeline, triage_inbox
 from email_agent.scaffolding import (
     AccountProvider,
     ModelProvider,
@@ -162,16 +162,21 @@ def init_profile(
 
 @app.command()
 def inbox(profile: Annotated[str, typer.Option()], limit: int = 20):
-    """List new message headers without invoking an LLM."""
-    _, selected, provider, database, _ = _components(profile, with_agents=False)
-    messages = [
-        m
-        for m in provider.get_new_messages(limit)
-        if not database.is_processed(m.account_id, m.provider_id)
-    ]
-    typer.echo(f"Checking {selected.name}...\n\n{len(messages)} new messages")
-    for index, message in enumerate(messages, 1):
-        typer.echo(f"{index}. {message.from_name or message.from_address} — {message.subject}")
+    """Classify new messages and display them in user-facing inbox sections."""
+    _, selected, provider, database, agents = _components(profile)
+    typer.echo(f"Checking {selected.name}...")
+    items = triage_inbox(provider, agents, database, limit)
+    typer.echo(f"\n{len(items)} new messages")
+
+    numbered_items = list(enumerate(items, 1))
+    for group in INBOX_GROUP_ORDER:
+        grouped = [(index, item) for index, item in numbered_items if item.group is group]
+        if not grouped:
+            continue
+        typer.echo(f"\n{group.value}\n{'─' * len(group.value)}")
+        for index, item in grouped:
+            sender = item.message.from_name or item.message.from_address
+            typer.echo(f"{index}. {sender} — {item.message.subject}")
 
 
 def _render(result):
