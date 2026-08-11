@@ -27,7 +27,7 @@ For an IMAP customer-support mailbox:
 uv run email-agent account init support@example.com \
   --provider imap \
   --imap-host imap.example.com \
-  --template customer_support \
+  --template support \
   --model-provider ollama \
   --model qwen3
 ```

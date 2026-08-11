@@ -35,7 +35,7 @@ def test_generates_imap_credentials_as_environment_references(tmp_path):
         tmp_path,
         "support@example.com",
         AccountProvider.IMAP,
-        AgentTemplate.CUSTOMER_SUPPORT,
+        AgentTemplate.SUPPORT,
         model_provider=ModelProvider.OLLAMA,
         model="qwen3",
         imap_host="imap.example.com",

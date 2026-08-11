@@ -15,7 +15,7 @@ class AgentTemplate(StrEnum):
     """Built-in agent behavior templates available during account creation."""
 
     PERSONAL = "personal"
-    CUSTOMER_SUPPORT = "customer_support"
+    SUPPORT = "support"
 
 
 class AccountProvider(StrEnum):
