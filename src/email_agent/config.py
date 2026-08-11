@@ -42,30 +42,14 @@ def _default_categories() -> dict[str, str]:
     }
 
 
-class OrganizationConfig(BaseModel):
-    """Optional synchronization of categories to provider labels or folders."""
-
-    enabled: bool = True
-    prefix: str = "Email Agent"
-
-    @field_validator("prefix")
-    @classmethod
-    def safe_prefix(cls, value: str) -> str:
-        value = value.strip().strip("/")
-        if not value or any(ord(character) > 127 for character in value):
-            raise ValueError("organization prefix must be non-empty ASCII text")
-        return value
-
-
 class AgentConfig(BaseModel):
-    """Model, system prompt, categories, organization, and enforced safety policy."""
+    """Model, system prompt, categories, and enforced safety policy."""
 
     name: str
     version: int = 1
     model: ModelConfig
     system_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
-    organization: OrganizationConfig = Field(default_factory=OrganizationConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
 
     @field_validator("categories")
@@ -74,7 +58,14 @@ class AgentConfig(BaseModel):
         if not value:
             raise ValueError("categories must be a non-empty mapping")
         for key, description in value.items():
-            if not key or not key.replace("_", "").isalnum() or not key.isascii():
+            segments = key.split("/")
+            if any(
+                not segment
+                or not segment.replace("_", "").isalnum()
+                or not segment.isascii()
+                or segment != segment.lower()
+                for segment in segments
+            ):
                 raise ValueError(f"Invalid category key: {key!r}")
             if not description.strip():
                 raise ValueError(f"Category {key!r} must have a description")
@@ -92,6 +83,7 @@ class AccountConfig(BaseModel):
     password_env: str | None = None
     imap_host: str | None = None
     imap_port: int = 993
+    category_action: Literal["copy", "move"] | None = None
     smtp_host: str | None = None
     smtp_port: int = 465
     agent: AgentConfig
@@ -102,6 +94,8 @@ class AccountConfig(BaseModel):
             [self.username_env, self.password_env, self.imap_host]
         ):
             raise ValueError("IMAP accounts require credential env names and imap_host")
+        if self.provider == "gmail" and self.category_action is not None:
+            raise ValueError("category_action is only supported for IMAP accounts")
         return self
 
 

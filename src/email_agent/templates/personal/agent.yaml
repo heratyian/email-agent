@@ -12,9 +12,6 @@ categories:
   newsletters: Subscriptions and recurring publications.
   reference: Useful information requiring no action.
   noise: Spam or low-value automated mail.
-organization:
-  enabled: true
-  prefix: Email Agent
 safety:
   allow_drafts: true
   allow_send: false

@@ -18,14 +18,22 @@ LEGACY_CATEGORY_MAP = {
 }
 
 
-def category_destination(agent, classification: EmailClassification) -> str:
+def category_destination(agent, classification: EmailClassification) -> str | None:
     """Return the provider-neutral label/folder path for a configured category."""
     key = classification.category
+    if key is None:
+        return None
     if key not in agent.categories:
         key = LEGACY_CATEGORY_MAP.get(key, key)
     if key not in agent.categories:
+        nested_matches = [
+            candidate for candidate in agent.categories if candidate.rsplit("/", 1)[-1] == key
+        ]
+        if len(nested_matches) == 1:
+            key = nested_matches[0]
+    if key not in agent.categories:
         raise KeyError(f"unknown category {classification.category!r}")
-    return f"{agent.organization.prefix}/{key}".lower()
+    return key
 
 
 @dataclass
@@ -138,12 +146,18 @@ class EmailPipeline:
             reply = None
             if classification.requires_reply and self.agent.safety.allow_drafts:
                 reply = self.agents.draft(message, thread, classification)
-            if self.agent.organization.enabled:
-                destination = category_destination(self.agent, classification)
-                self.provider.sync_category(message.provider_id, destination)
+            destination = category_destination(self.agent, classification)
+            if destination is not None:
+                sync = self.provider.sync_category(
+                    message.provider_id, destination, message.mailbox
+                )
             local_id, draft = self.database.save_result(message, classification, reply)
-            if self.agent.organization.enabled:
-                self.database.mark_category_synced(local_id, destination)
+            if destination is not None:
+                if sync is not None:
+                    self.database.update_provider_location(local_id, sync.provider_id, sync.mailbox)
+                self.database.mark_category_synced(
+                    local_id, self.provider.category_sync_key(destination)
+                )
             self.database.record_run(
                 local_id,
                 self.account_id,

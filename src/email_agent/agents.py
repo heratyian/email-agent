@@ -32,7 +32,10 @@ class EmailAgents:
             {"messages": [{"role": "user", "content": format_thread(thread, message)}]}
         )
         classification = EmailClassification.model_validate(response["structured_response"])
-        if classification.category not in self.agent.categories:
+        if (
+            classification.category is not None
+            and classification.category not in self.agent.categories
+        ):
             allowed = ", ".join(self.agent.categories)
             raise ValueError(
                 f"Model returned unknown category {classification.category!r}; expected {allowed}"

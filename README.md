@@ -82,16 +82,17 @@ Categories are the single organization concept. Define them under an account's n
 
 ```yaml
 categories:
-  action: Requires a reply, decision, or other action from me.
-  receipts: Purchases, invoices, and payment confirmations.
-  newsletters: Subscriptions and recurring publications.
-  reference: Useful information requiring no action.
-organization:
-  enabled: true
-  prefix: Email Agent
+  agent/action: Requires a reply, decision, or other action from me.
+  agent/receipts: Purchases, invoices, and payment confirmations.
+  agent/newsletters: Subscriptions and recurring publications.
+  agent/reference: Useful information requiring no action.
 ```
 
-`inbox` previews the selected category without changing the mailbox. `process` and `monitor` synchronize it to a lowercase path such as `email agent/receipts`: Gmail applies a user label, while IMAP creates the folder and copies the message into it without removing the Inbox copy. Set `organization.enabled: false` to keep categories local only.
+The category key is the exact lowercase Gmail label or IMAP folder path. Use `travel` for a top-level destination or `agent/travel` when you want a prefix. `inbox` previews the selected category without changing the mailbox. `process` and `monitor` apply it automatically: Gmail uses a label, while IMAP creates the folder hierarchy and copies the message without removing the Inbox copy.
+
+IMAP accounts default to copying messages into category folders. Set `category_action: move` on the account to remove categorized messages from Inbox instead. Move mode requires the server's `MOVE` and `UIDPLUS` capabilities; the agent will refuse to emulate a move with unsafe copy/delete/expunge operations. Gmail accounts must omit this setting because labels do not copy messages.
+
+Messages that do not clearly fit a configured category remain `Uncategorized`. They still receive a priority, summary, reply recommendation, and attention state, but no Gmail label or IMAP folder is applied. `organize` reports them separately rather than treating them as failures.
 
 Use `organize` to backfill categories already stored locally without reclassifying messages or creating drafts. Start with `--dry-run`; successful syncs are recorded locally so later runs skip them and IMAP copies are not duplicated. `--force` deliberately retries all matching messages and can therefore duplicate IMAP copies.
 

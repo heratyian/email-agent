@@ -77,12 +77,14 @@ class FakeImapClient:
         self.created = []
         self.copied = []
         self.logged_out = False
+        self.list_calls = 0
 
     def create(self, mailbox):
         self.created.append(mailbox)
         return "OK", []
 
-    def list(self, reference, pattern):
+    def list(self):
+        self.list_calls += 1
         return "OK", [b'(\\Noselect) "." ""']
 
     def uid(self, command, message_id, mailbox):
@@ -104,13 +106,51 @@ def test_imap_category_sync_creates_folder_and_copies_message(monkeypatch):
         ),
     )
     client = FakeImapClient()
-    monkeypatch.setattr(provider, "_connect", lambda: client)
+    monkeypatch.setattr(provider, "_connect", lambda mailbox="INBOX": client)
 
     provider.sync_category("42", "Email Agent/Action")
 
     assert client.created == ['"Email Agent"', '"Email Agent.Action"']
     assert client.copied == [("copy", "42", '"Email Agent.Action"')]
     assert client.logged_out is True
+    assert client.list_calls == 1
+
+
+class FakeMoveImapClient(FakeImapClient):
+    capabilities = (b"IMAP4REV1", b"MOVE", b"UIDPLUS")
+
+    def capability(self):
+        return "OK", [b"IMAP4rev1 MOVE UIDPLUS"]
+
+    def uid(self, command, message_id, mailbox):
+        self.copied.append((command, message_id, mailbox))
+        return "OK", [None]
+
+    def response(self, code):
+        assert code == "COPYUID"
+        return "COPYUID", [b"12345 42 99"]
+
+
+def test_imap_category_move_returns_new_folder_scoped_uid(monkeypatch):
+    provider = ImapProvider(
+        "support",
+        account(
+            "imap",
+            username_env="USER_ENV",
+            password_env="PASSWORD_ENV",
+            imap_host="imap.example.com",
+            category_action="move",
+        ),
+    )
+    client = FakeMoveImapClient()
+    monkeypatch.setattr(provider, "_connect", lambda mailbox="INBOX": client)
+
+    result = provider.sync_category("42", "agent/action")
+
+    assert client.copied == [("move", "42", '"agent.action"')]
+    assert result.provider_id == "99"
+    assert result.mailbox == "agent.action"
+    assert provider.category_sync_key("agent/action") == "move:agent/action"
 
 
 class Executable:

@@ -33,6 +33,13 @@ class ModelProvider(StrEnum):
     COMPATIBLE = "compatible"
 
 
+class CategoryAction(StrEnum):
+    """How an IMAP account places messages into category folders."""
+
+    COPY = "copy"
+    MOVE = "move"
+
+
 @dataclass(frozen=True)
 class GeneratedAccount:
     """Configuration and system prompt created for one account."""
@@ -68,6 +75,7 @@ def generate_account(
     password_env: str | None = None,
     credentials_file: str | None = None,
     token_file: str | None = None,
+    category_action: CategoryAction | None = None,
     force: bool = False,
 ) -> GeneratedAccount:
     """Create one email-address account with a nested agent and system prompt."""
@@ -108,6 +116,8 @@ def generate_account(
         "email": email,
     }
     if provider is AccountProvider.GMAIL:
+        if category_action is not None:
+            raise ValueError("--category-action is only supported for IMAP accounts")
         account.update(
             {
                 "credentials_file": credentials_file or f"secrets/{slug}_credentials.json",
@@ -127,6 +137,8 @@ def generate_account(
         )
         if smtp_host:
             account.update({"smtp_host": smtp_host, "smtp_port": smtp_port})
+        if category_action is not None:
+            account["category_action"] = category_action.value
     account["agent"] = yaml.safe_load(agent_text)
     AccountConfig.model_validate(account)
 

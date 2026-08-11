@@ -28,3 +28,4 @@ def test_classification_prompt_uses_system_prompt_and_configured_categories(tmp_
     assert "- action: Requires my response." in rendered
     assert "- travel: Reservations and itinerary changes." in rendered
     assert "unlisted category" in rendered
+    assert "Return null" in rendered

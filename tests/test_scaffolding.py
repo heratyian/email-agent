@@ -1,11 +1,17 @@
+from types import SimpleNamespace
+
 import pytest
 import yaml
 from typer.testing import CliRunner
 
+from email_agent import cli
 from email_agent.cli import app
+from email_agent.config import AgentConfig
+from email_agent.models import EmailClassification, EmailMessage, EmailThread
 from email_agent.scaffolding import (
     AccountProvider,
     AgentTemplate,
+    CategoryAction,
     ModelProvider,
     generate_account,
 )
@@ -39,11 +45,13 @@ def test_generates_imap_credentials_as_environment_references(tmp_path):
         model_provider=ModelProvider.OLLAMA,
         model="qwen3",
         imap_host="imap.example.com",
+        category_action=CategoryAction.MOVE,
     )
     account = yaml.safe_load(result.path.read_text())["accounts"][result.account_id]
     assert account["username_env"] == "SUPPORT_EXAMPLE_COM_USERNAME"
     assert account["password_env"] == "SUPPORT_EXAMPLE_COM_PASSWORD"
     assert account["agent"]["model"]["provider"] == "ollama"
+    assert account["category_action"] == "move"
 
 
 def test_generator_refuses_duplicates_and_invalid_email(tmp_path):
@@ -103,3 +111,91 @@ def test_organize_help_includes_reclassification_options():
     assert result.exit_code == 0
     assert "--reclassify-unknown" in result.output
     assert "--reclassify-all" in result.output
+
+
+class ReclassificationDatabase:
+    def __init__(self, classification):
+        self.classification = classification
+
+    def list_categorized_messages(self, account, limit):
+        return [
+            {
+                "id": 77,
+                "provider_message_id": "provider-77",
+                "provider_uid": "provider-77",
+                "provider_mailbox": "INBOX",
+                "subject": "Old classification",
+                "classification": self.classification.model_dump_json(),
+            }
+        ]
+
+    def category_was_synced(self, message_id, destination):
+        return False
+
+
+class ReclassificationProvider:
+    def get_message(self, message_id, mailbox="INBOX"):
+        return EmailMessage.model_construct(provider_id=message_id)
+
+    def get_thread(self, message_id, mailbox="INBOX"):
+        return EmailThread(messages=[])
+
+    @staticmethod
+    def category_sync_key(destination):
+        return destination
+
+
+class ReclassificationAgents:
+    def classify(self, message, thread):
+        return EmailClassification(
+            category="action",
+            requires_reply=True,
+            priority="normal",
+            summary="Needs a reply",
+            confidence=0.9,
+        )
+
+
+def test_reclassify_all_accepts_unknown_stored_category(monkeypatch):
+    agent = AgentConfig.model_validate(
+        {
+            "name": "Test",
+            "model": {"provider": "openai", "model": "test"},
+            "system_prompt": "prompts/test/system.md",
+            "categories": {"action": "Requires my response."},
+        }
+    )
+    configured = SimpleNamespace(email="person@example.com", agent=agent)
+    old = EmailClassification(
+        category="informational",
+        requires_reply=False,
+        priority="normal",
+        summary="Old taxonomy",
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_components",
+        lambda account, with_agents: (
+            None,
+            configured,
+            ReclassificationProvider(),
+            ReclassificationDatabase(old),
+            ReclassificationAgents(),
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "organize",
+            "--account",
+            "person@example.com",
+            "--dry-run",
+            "--reclassify-all",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "reclassified as action" in result.output
+    assert "unknown category" not in result.output

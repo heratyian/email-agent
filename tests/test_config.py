@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from email_agent.config import Settings
+from email_agent.config import AccountConfig, Settings
 
 
 def write_account_config(root: Path) -> None:
@@ -29,23 +29,36 @@ def test_account_contains_valid_draft_only_agent(tmp_path):
     account = settings.account("person@example.com")
     assert account.email == "person@example.com"
     assert account.agent.safety.allow_send is False
-    assert account.agent.organization.enabled is True
     assert account.agent.categories["action"].startswith("Requires")
 
 
-def test_category_shorthand_and_provider_names_are_validated(tmp_path):
+def test_category_action_is_imap_only():
+    with pytest.raises(ValueError, match="only supported for IMAP"):
+        AccountConfig.model_validate(
+            {
+                "provider": "gmail",
+                "email": "person@example.com",
+                "category_action": "move",
+                "agent": {
+                    "name": "Test",
+                    "model": {"provider": "openai", "model": "test"},
+                    "system_prompt": "prompts/system.md",
+                },
+            }
+        )
+
+
+def test_nested_category_paths_are_validated(tmp_path):
     write_account_config(tmp_path)
     raw = (tmp_path / "accounts.yaml").read_text()
     (tmp_path / "accounts.yaml").write_text(
         raw.replace(
             "      safety:",
-            "      categories:\n        follow_up: Needs my response.\n"
-            "      organization: {enabled: true, prefix: Assistant}\n      safety:",
+            "      categories:\n        agent/follow_up: Needs my response.\n      safety:",
         )
     )
     agent = Settings(tmp_path).account("person@example.com").agent
-    assert agent.categories["follow_up"] == "Needs my response."
-    assert agent.organization.prefix == "Assistant"
+    assert agent.categories["agent/follow_up"] == "Needs my response."
 
 
 def test_unknown_account_is_rejected(tmp_path):

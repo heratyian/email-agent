@@ -13,6 +13,7 @@ class EmailMessage(BaseModel):
     provider_id: str
     thread_id: str | None = None
     account_id: str
+    mailbox: str = "INBOX"
     from_address: str
     from_name: str | None = None
     to: list[str] = Field(default_factory=list)
@@ -36,7 +37,9 @@ class EmailThread(BaseModel):
 class EmailClassification(BaseModel):
     """Validated triage decision produced by the classification agent."""
 
-    category: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
+    category: str | None = Field(
+        default=None, min_length=1, pattern=r"^[a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)*$"
+    )
     requires_reply: bool
     priority: Literal["low", "normal", "high", "urgent"]
     intent: str | None = None

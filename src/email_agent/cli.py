@@ -23,6 +23,7 @@ from email_agent.pipeline import (
 from email_agent.scaffolding import (
     AccountProvider,
     AgentTemplate,
+    CategoryAction,
     ModelProvider,
     generate_account,
 )
@@ -49,6 +50,11 @@ GROUP_COLORS = {
     PriorityGroup.NORMAL: typer.colors.CYAN,
     PriorityGroup.LOW: typer.colors.BRIGHT_BLACK,
 }
+
+
+def _category_name(category: str | None) -> str:
+    """Render an optional category for human-facing CLI output."""
+    return category.replace("_", " ").title() if category else "Uncategorized"
 
 
 def _message_id(value: int, *, prefix: str = "") -> None:
@@ -101,6 +107,10 @@ def init_account(
         str | None, typer.Option(help="Gmail OAuth client JSON path.")
     ] = None,
     token_file: Annotated[str | None, typer.Option(help="Gmail OAuth token path.")] = None,
+    category_action: Annotated[
+        CategoryAction | None,
+        typer.Option(help="IMAP category behavior: copy or move."),
+    ] = None,
     force: Annotated[bool, typer.Option(help="Replace an existing account entry.")] = False,
 ):
     """Create or add a mailbox account in the private accounts.yaml file."""
@@ -121,6 +131,7 @@ def init_account(
             password_env=password_env,
             credentials_file=credentials_file,
             token_file=token_file,
+            category_action=category_action,
             force=force,
         )
     except (TypeError, ValueError, FileExistsError) as exc:
@@ -202,7 +213,7 @@ def inbox(
             sender = item.message.from_name or item.message.from_address
             _message_id(item.local_id)
             typer.echo(f"  {sender} — {item.message.subject}")
-            details = [item.classification.category.replace("_", " ").title()]
+            details = [_category_name(item.classification.category)]
             if item.draft_ready:
                 details.append("Draft ready")
             if attention == "all":
@@ -218,7 +229,7 @@ def _render(result):
         f"\n{result.message.from_name or result.message.from_address}\n{result.message.subject}"
     )
     typer.echo(
-        f"\nCategory: {c.category.replace('_', ' ').title()}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply recommended: {'YES' if c.requires_reply else 'NO'}"
+        f"\nCategory: {_category_name(c.category)}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply recommended: {'YES' if c.requires_reply else 'NO'}"
     )
     if c.requires_escalation:
         typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
@@ -276,29 +287,31 @@ def organize(
         raise typer.BadParameter("Use only one reclassification option")
     should_reclassify = reclassify_unknown or reclassify_all
     _, configured, provider, database, agents = _components(account, with_agents=should_reclassify)
-    if not configured.agent.organization.enabled:
-        raise typer.BadParameter("organization is disabled for this account")
-
     rows = database.list_categorized_messages(account, limit)
-    changed = skipped = failed = 0
+    changed = skipped = uncategorized = failed = 0
     typer.secho(f"Organizing {configured.email}...", fg=typer.colors.CYAN, bold=True)
     if dry_run:
         typer.secho("DRY RUN — no mailbox changes will be made", fg=typer.colors.YELLOW)
     for row in rows:
         classification = EmailClassification.model_validate_json(row["classification"])
-        try:
-            destination = category_destination(configured.agent, classification)
-        except KeyError as exc:
-            if reclassify_unknown:
-                destination = None
-            else:
-                failed += 1
-                typer.secho(f"{row['id']}: {exc.args[0]}", fg=typer.colors.BRIGHT_RED)
-                continue
-        if reclassify_all or (reclassify_unknown and destination is None):
+        missing_category = False
+        if classification.category is None:
+            destination = None
+        else:
             try:
-                message = provider.get_message(row["provider_message_id"])
-                thread = provider.get_thread(row["provider_message_id"])
+                destination = category_destination(configured.agent, classification)
+            except KeyError as exc:
+                missing_category = True
+                if should_reclassify:
+                    destination = None
+                else:
+                    failed += 1
+                    typer.secho(f"{row['id']}: {exc.args[0]}", fg=typer.colors.BRIGHT_RED)
+                    continue
+        if reclassify_all or (reclassify_unknown and missing_category):
+            try:
+                message = provider.get_message(row["provider_uid"], row["provider_mailbox"])
+                thread = provider.get_thread(row["provider_uid"], row["provider_mailbox"])
                 classification = agents.classify(message, thread)
                 destination = category_destination(configured.agent, classification)
             except Exception as exc:  # noqa: BLE001 - continue the remaining batch
@@ -312,10 +325,11 @@ def organize(
             if not dry_run:
                 database.update_classification(row["id"], classification)
         if destination is None:
-            failed += 1
-            typer.secho(f"{row['id']}: no category destination", fg=typer.colors.RED)
+            uncategorized += 1
+            typer.secho(f"{row['id']}: uncategorized", fg=typer.colors.BRIGHT_BLACK)
             continue
-        if not force and database.category_was_synced(row["id"], destination):
+        sync_key = provider.category_sync_key(destination)
+        if not force and database.category_was_synced(row["id"], sync_key):
             skipped += 1
             continue
         if dry_run:
@@ -325,12 +339,14 @@ def organize(
             typer.secho(destination, fg=typer.colors.MAGENTA, bold=True)
             continue
         try:
-            provider.sync_category(row["provider_message_id"], destination)
+            sync = provider.sync_category(row["provider_uid"], destination, row["provider_mailbox"])
         except Exception as exc:  # noqa: BLE001 - one provider failure must not stop the batch
             failed += 1
             typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
             continue
-        database.mark_category_synced(row["id"], destination)
+        if sync is not None:
+            database.update_provider_location(row["id"], sync.provider_id, sync.mailbox)
+        database.mark_category_synced(row["id"], sync_key)
         changed += 1
         _message_id(row["id"])
         typer.secho(f"  ✓ {destination}", fg=typer.colors.GREEN, bold=True)
@@ -340,6 +356,8 @@ def organize(
     typer.secho(f"{changed} {action}", fg=typer.colors.GREEN, bold=True, nl=False)
     typer.echo(", ", nl=False)
     typer.secho(f"{skipped} already synced", fg=typer.colors.BRIGHT_BLACK, nl=False)
+    typer.echo(", ", nl=False)
+    typer.secho(f"{uncategorized} uncategorized", fg=typer.colors.BRIGHT_BLACK, nl=False)
     typer.echo(", ", nl=False)
     typer.secho(
         f"{failed} failed.",
@@ -390,14 +408,14 @@ def show_message(message_id: int):
         raise typer.BadParameter("message not found")
     account = settings.accounts[row["account_id"]]
     provider = create_mail_provider(row["account_id"], account, settings.root)
-    message = provider.get_message(row["provider_message_id"])
+    message = provider.get_message(row["provider_uid"], row["provider_mailbox"])
     classification = json.loads(row["classification"]) if row["classification"] else None
 
     typer.echo(f"From: {message.from_name or message.from_address}")
     typer.echo(f"Subject: {message.subject}\n")
     typer.echo(message.content or "(No plain-text body)")
     if classification:
-        typer.echo(f"\nCategory: {classification['category'].replace('_', ' ').title()}")
+        typer.echo(f"\nCategory: {_category_name(classification['category'])}")
         typer.echo(f"Priority: {classification['priority'].upper()}")
         typer.echo(f"Attention: {row['attention_state'].title()}")
         typer.echo(f"Confidence: {classification['confidence']:.2f}")

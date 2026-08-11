@@ -125,7 +125,7 @@ class GmailProvider:
         """Return unread Inbox messages for the processing workflow."""
         return self.get_messages(limit, unread_only=True)
 
-    def get_message(self, message_id: str) -> EmailMessage:
+    def get_message(self, message_id: str, mailbox: str = "INBOX") -> EmailMessage:
         data = (
             self._client()
             .users()
@@ -135,8 +135,8 @@ class GmailProvider:
         )
         return self._parse(data)
 
-    def get_thread(self, message_id: str) -> EmailThread:
-        message = self.get_message(message_id)
+    def get_thread(self, message_id: str, mailbox: str = "INBOX") -> EmailThread:
+        message = self.get_message(message_id, mailbox)
         data = (
             self._client()
             .users()
@@ -152,7 +152,9 @@ class GmailProvider:
     def mark_processed(self, message_id: str) -> None:
         return None
 
-    def sync_category(self, message_id: str, destination: str) -> None:
+    def sync_category(
+        self, message_id: str, destination: str, source_mailbox: str = "INBOX"
+    ) -> None:
         """Create a user label when needed and idempotently apply it to a message."""
         service = self._client()
         labels = service.users().labels().list(userId="me").execute().get("labels", [])
@@ -180,3 +182,8 @@ class GmailProvider:
             .modify(userId="me", id=message_id, body={"addLabelIds": [label["id"]]})
             .execute()
         )
+
+    @staticmethod
+    def category_sync_key(destination: str) -> str:
+        """Return the stable audit key for an idempotent Gmail label."""
+        return destination

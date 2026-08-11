@@ -9,6 +9,7 @@ from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 from email_agent.config import AccountConfig
+from email_agent.mail.base import CategorySyncResult
 from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
 
@@ -23,7 +24,7 @@ class ImapProvider:
     def __init__(self, account_id: str, config: AccountConfig):
         self.account_id, self.config = account_id, config
 
-    def _connect(self):
+    def _connect(self, mailbox: str = "INBOX"):
         username = os.getenv(self.config.username_env or "")
         password = os.getenv(self.config.password_env or "")
         if not username or not password:
@@ -32,10 +33,13 @@ class ImapProvider:
             )
         client = imaplib.IMAP4_SSL(self.config.imap_host, self.config.imap_port)
         client.login(username, password)
-        client.select("INBOX")
+        status, _ = client.select(self._mailbox(mailbox), readonly=False)
+        if status != "OK":
+            client.logout()
+            raise RuntimeError(f"Could not select IMAP folder: {mailbox}")
         return client
 
-    def _parse(self, provider_id: str, raw: bytes) -> EmailMessage:
+    def _parse(self, provider_id: str, raw: bytes, mailbox: str = "INBOX") -> EmailMessage:
         msg = email.message_from_bytes(raw)
         text, html = None, None
         for part in msg.walk() if msg.is_multipart() else [msg]:
@@ -62,6 +66,7 @@ class ImapProvider:
             provider_id=provider_id,
             thread_id=msg.get("In-Reply-To") or msg.get("Message-ID"),
             account_id=self.account_id,
+            mailbox=mailbox,
             from_address=sender_address,
             from_name=sender_name or None,
             to=[address for _, address in getaddresses(msg.get_all("To", []))],
@@ -85,7 +90,7 @@ class ImapProvider:
             if status != "OK" or not data:
                 raise RuntimeError("IMAP message search failed")
             ids = reversed(data[0].split()[-limit:])
-            return [self._fetch(client, value.decode()) for value in ids]
+            return [self._fetch(client, value.decode(), "INBOX") for value in ids]
         finally:
             client.logout()
 
@@ -93,21 +98,21 @@ class ImapProvider:
         """Return unread messages for the processing workflow."""
         return self.get_messages(limit, unread_only=True)
 
-    def _fetch(self, client, message_id: str) -> EmailMessage:
+    def _fetch(self, client, message_id: str, mailbox: str = "INBOX") -> EmailMessage:
         status, data = client.uid("fetch", message_id, "(BODY.PEEK[])")
         if status != "OK" or not data or not isinstance(data[0], tuple):
             raise KeyError(f"Message not found: {message_id}")
-        return self._parse(message_id, data[0][1])
+        return self._parse(message_id, data[0][1], mailbox)
 
-    def get_message(self, message_id: str) -> EmailMessage:
-        client = self._connect()
+    def get_message(self, message_id: str, mailbox: str = "INBOX") -> EmailMessage:
+        client = self._connect(mailbox)
         try:
-            return self._fetch(client, message_id)
+            return self._fetch(client, message_id, mailbox)
         finally:
             client.logout()
 
-    def get_thread(self, message_id: str) -> EmailThread:
-        return EmailThread(messages=[self.get_message(message_id)])
+    def get_thread(self, message_id: str, mailbox: str = "INBOX") -> EmailThread:
+        return EmailThread(messages=[self.get_message(message_id, mailbox)])
 
     def create_draft(self, message_id: str, body: str) -> Draft:
         raise NotImplementedError("IMAP drafts are stored locally by the application")
@@ -120,27 +125,70 @@ class ImapProvider:
         """Quote an ASCII mailbox name for an IMAP command."""
         return f'"{value.replace(chr(92), chr(92) * 2).replace(chr(34), chr(92) + chr(34))}"'
 
-    def sync_category(self, message_id: str, destination: str) -> None:
-        """Create the category folder if needed and copy the Inbox message into it."""
-        client = self._connect()
+    def sync_category(
+        self, message_id: str, destination: str, source_mailbox: str = "INBOX"
+    ) -> CategorySyncResult | None:
+        """Create a category folder and safely copy or move a message into it."""
+        client = self._connect(source_mailbox)
         try:
             delimiter = self._folder_delimiter(client)
-            parts = destination.split("/", 1)
+            parts = destination.split("/")
             provider_name = delimiter.join(parts) if delimiter else " - ".join(parts)
             mailbox = self._mailbox(provider_name)
-            if delimiter and len(parts) == 2:
-                self._ensure_folder(client, parts[0])
+            if delimiter:
+                for depth in range(1, len(parts)):
+                    self._ensure_folder(client, delimiter.join(parts[:depth]))
             self._ensure_folder(client, provider_name)
-            status, _ = client.uid("copy", message_id, mailbox)
+            if (self.config.category_action or "copy") == "copy":
+                status, _ = client.uid("copy", message_id, mailbox)
+                if status != "OK":
+                    raise RuntimeError(f"Could not copy message to IMAP folder: {destination}")
+                return None
+            capabilities = self._capabilities(client)
+            missing = {"MOVE", "UIDPLUS"} - capabilities
+            if missing:
+                required = ", ".join(sorted(missing))
+                raise RuntimeError(
+                    f"IMAP move requires server capability: {required}; use category_action: copy"
+                )
+            status, _ = client.uid("move", message_id, mailbox)
             if status != "OK":
-                raise RuntimeError(f"Could not copy message to IMAP folder: {destination}")
+                raise RuntimeError(f"Could not move message to IMAP folder: {destination}")
+            response, data = client.response("COPYUID")
+            if response != "COPYUID" or not data or not data[0]:
+                raise RuntimeError("IMAP server moved the message without returning its new UID")
+            copy_uid = data[0].decode() if isinstance(data[0], bytes) else data[0]
+            destination_uid = copy_uid.split()[-1]
+            if not destination_uid.isdigit():
+                raise RuntimeError("IMAP server returned an invalid destination UID")
+            return CategorySyncResult(provider_id=destination_uid, mailbox=provider_name)
         finally:
             client.logout()
 
     @staticmethod
+    def _capabilities(client) -> set[str]:
+        """Refresh capabilities after authentication, when servers may add extensions."""
+        status, rows = client.capability()
+        if status == "OK" and rows:
+            text = b" ".join(rows).decode() if isinstance(rows[0], bytes) else " ".join(rows)
+            return {value.upper() for value in text.split()}
+        return {
+            value.decode().upper() if isinstance(value, bytes) else value.upper()
+            for value in client.capabilities
+        }
+
+    def category_sync_key(self, destination: str) -> str:
+        """Distinguish move completion from legacy/default copy completion."""
+        return (
+            f"move:{destination}"
+            if (self.config.category_action or "copy") == "move"
+            else destination
+        )
+
+    @staticmethod
     def _folder_delimiter(client) -> str | None:
         """Discover the hierarchy delimiter advertised by the IMAP server."""
-        status, rows = client.list("", "")
+        status, rows = client.list()
         if status != "OK" or not rows:
             return "/"
         text = rows[0].decode(errors="replace") if isinstance(rows[0], bytes) else rows[0]

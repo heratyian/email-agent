@@ -35,7 +35,9 @@ class Database:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY, account_id TEXT NOT NULL,
-                    provider_message_id TEXT NOT NULL, thread_id TEXT,
+                    provider_message_id TEXT NOT NULL, provider_uid TEXT,
+                    provider_mailbox TEXT NOT NULL DEFAULT 'INBOX',
+                    thread_id TEXT,
                     from_address TEXT NOT NULL, from_name TEXT, subject TEXT NOT NULL,
                     received_at TEXT NOT NULL,
                     triaged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -82,6 +84,13 @@ class Database:
                 db.execute("ALTER TABLE messages ADD COLUMN snoozed_until TEXT")
             if "done_at" not in columns:
                 db.execute("ALTER TABLE messages ADD COLUMN done_at TEXT")
+            if "provider_mailbox" not in columns:
+                db.execute(
+                    "ALTER TABLE messages ADD COLUMN provider_mailbox TEXT NOT NULL DEFAULT 'INBOX'"
+                )
+            if "provider_uid" not in columns:
+                db.execute("ALTER TABLE messages ADD COLUMN provider_uid TEXT")
+                db.execute("UPDATE messages SET provider_uid=provider_message_id")
             run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
             if "profile_id" in run_columns and "account_id" not in run_columns:
                 db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_id TO account_id")
@@ -108,12 +117,14 @@ class Database:
         db.execute(
             """
             INSERT INTO messages(
-                account_id, provider_message_id, thread_id, from_address, from_name,
-                subject, received_at, triaged_at, processed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP,
+                account_id, provider_message_id, provider_uid, provider_mailbox, thread_id,
+                from_address, from_name, subject, received_at, triaged_at, processed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP,
                       CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
             ON CONFLICT(account_id, provider_message_id) DO UPDATE SET
                 thread_id=excluded.thread_id,
+                provider_uid=excluded.provider_uid,
+                provider_mailbox=excluded.provider_mailbox,
                 from_address=excluded.from_address,
                 from_name=excluded.from_name,
                 subject=excluded.subject,
@@ -127,6 +138,8 @@ class Database:
             (
                 message.account_id,
                 message.provider_id,
+                message.provider_id,
+                message.mailbox,
                 message.thread_id,
                 message.from_address,
                 message.from_name,
@@ -382,6 +395,14 @@ class Database:
             db.execute(
                 "INSERT OR IGNORE INTO category_syncs(message_id,destination) VALUES(?,?)",
                 (message_id, destination),
+            )
+
+    def update_provider_location(self, message_id: int, provider_id: str, mailbox: str) -> None:
+        """Store the UID and folder assigned by an IMAP move."""
+        with self.connect() as db:
+            db.execute(
+                "UPDATE messages SET provider_uid=?, provider_mailbox=? WHERE id=?",
+                (provider_id, mailbox, message_id),
             )
 
     def approve(self, message_id: int) -> bool:

@@ -7,8 +7,9 @@ from email_agent.config import AgentConfig
 from email_agent.models import EmailMessage, EmailThread
 
 CLASSIFICATION_INSTRUCTIONS = """Classify the email using the required schema.
-Choose exactly one category from the configured list. Never invent or reuse an
-unlisted category. Set requires_reply when a direct email response is useful.
+Choose a category only when one configured value clearly fits. Return null when
+none fit; never force a message into the closest category, invent a category, or
+reuse an unlisted category. Set requires_reply when a direct response is useful.
 Use priority to express urgency. Set requires_escalation for sensitive or
 consequential matters that require careful human judgment, and explain why."""
 

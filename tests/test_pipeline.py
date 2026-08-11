@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from email_agent.config import AgentConfig
+from email_agent.mail.base import CategorySyncResult
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.pipeline import (
     EmailPipeline,
@@ -25,14 +26,18 @@ class FakeProvider:
     def get_messages(self, limit=20, *, unread_only=False):
         return [self.message]
 
-    def get_thread(self, message_id):
+    def get_thread(self, message_id, mailbox="INBOX"):
         return EmailThread(messages=[self.message])
 
     def mark_processed(self, message_id):
         pass
 
-    def sync_category(self, message_id, destination):
+    def sync_category(self, message_id, destination, source_mailbox="INBOX"):
         self.synced.append((message_id, destination))
+
+    @staticmethod
+    def category_sync_key(destination):
+        return destination
 
 
 class FakeAgents:
@@ -58,6 +63,12 @@ class FakeAgents:
             reasoning_summary="More diagnostic detail is needed.",
             confidence=0.9,
         )
+
+
+class FakeMoveProvider(FakeProvider):
+    def sync_category(self, message_id, destination, source_mailbox="INBOX"):
+        super().sync_category(message_id, destination, source_mailbox)
+        return CategorySyncResult(provider_id="900", mailbox="action")
 
 
 def make_agent() -> AgentConfig:
@@ -86,14 +97,33 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
     assert results[0].classification.intent == "login_problem"
     assert results[0].draft.status == "generated"
     assert len(db.list_drafts()) == 1
-    assert provider.synced == [("abc", "email agent/action")]
-    assert db.category_was_synced(results[0].local_id, "email agent/action") is True
+    assert provider.synced == [("abc", "action")]
+    assert db.category_was_synced(results[0].local_id, "action") is True
     assert (
         EmailPipeline(
             "support@example.com", agent, FakeProvider(message), FakeAgents(), db
         ).process()
         == []
     )
+
+
+def test_pipeline_tracks_moved_imap_uid_without_changing_stable_identity(tmp_path):
+    message = EmailMessage(
+        provider_id="abc",
+        account_id="support@example.com",
+        from_address="customer@example.com",
+        subject="Login",
+        received_at=datetime.now(UTC),
+    )
+    db = Database(tmp_path / "test.db")
+    result = EmailPipeline(
+        "support@example.com", make_agent(), FakeMoveProvider(message), FakeAgents(), db
+    ).process()[0]
+
+    row = db.show_message(result.local_id)
+    assert row["provider_message_id"] == "abc"
+    assert row["provider_uid"] == "900"
+    assert row["provider_mailbox"] == "action"
 
 
 @pytest.mark.parametrize(
@@ -255,4 +285,31 @@ def test_legacy_category_maps_to_new_provider_destination():
         summary="Question",
         confidence=0.9,
     )
-    assert category_destination(make_agent(), classification) == "email agent/action"
+    assert category_destination(make_agent(), classification) == "action"
+
+
+def test_existing_category_maps_to_unique_nested_destination():
+    agent = make_agent()
+    agent.categories = {
+        "agent/action": "Requires my response.",
+        "agent/travel": "Reservations and itinerary changes.",
+    }
+    classification = EmailClassification(
+        category="action",
+        requires_reply=True,
+        priority="normal",
+        summary="Question",
+        confidence=0.9,
+    )
+    assert category_destination(agent, classification) == "agent/action"
+
+
+def test_uncategorized_message_has_no_provider_destination():
+    classification = EmailClassification(
+        category=None,
+        requires_reply=False,
+        priority="normal",
+        summary="Does not fit the configured taxonomy",
+        confidence=0.8,
+    )
+    assert category_destination(make_agent(), classification) is None
