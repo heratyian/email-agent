@@ -50,8 +50,13 @@ uv run email-agent accounts
 ```bash
 uv run email-agent inbox --account you@gmail.com
 uv run email-agent inbox --account you@gmail.com --unread
-uv run email-agent inbox --account you@gmail.com --unprocessed
+uv run email-agent inbox --account you@gmail.com --snoozed
+uv run email-agent inbox --account you@gmail.com --done
+uv run email-agent inbox --account you@gmail.com --all
 uv run email-agent process --account you@gmail.com
+uv run email-agent done 1
+uv run email-agent snooze 1 --until tomorrow
+uv run email-agent reopen 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent show 1
 uv run email-agent draft 1
@@ -59,13 +64,15 @@ uv run email-agent approve 1
 uv run email-agent monitor --account support@example.com --interval 300
 ```
 
-`inbox` behaves like a normal mailbox view: it shows recent Inbox messages regardless of provider read state or local processing state, sorts newest-first, groups by classification, and labels each message `NEW`, `TRIAGED`, or `PROCESSED`.
+`inbox` is the assistant's prioritized view of recent mail. Each message has familiar, user-facing attributes:
 
-- `NEW`: classified for the first time during the current `inbox` command.
-- `TRIAGED`: classified previously but not handled by `process` or `monitor`.
-- `PROCESSED`: full agent processing completed; a local draft was saved when required.
+- **Category** says what the message is about.
+- **Priority** (`urgent`, `normal`, or `low`) controls its inbox section.
+- **Draft ready** means the assistant recommends replying and prepared a draft.
 
-These workflow labels are independent of Gmail or IMAP read/unread state. Use `--unread` or `--unprocessed` for narrower operational views.
+The default inbox shows messages that still need attention. `done LOCAL_ID` records that you handled one—possibly by phone, Slack, or another channel—without changing the email in the provider. `snooze LOCAL_ID --until ...` hides it until later, and `reopen LOCAL_ID` returns it to the open inbox. Use `--done`, `--snoozed`, or `--all` to change the view. Snooze accepts `tomorrow`, an ISO date, or an ISO datetime.
+
+`done --delete-draft` also removes an untouched generated draft. Reviewed or approved drafts are always preserved. Read/unread status and internal processing bookkeeping remain separate and are not exposed as workflow concepts.
 
 `approve` only changes local draft state. It does not send email. Raw email bodies are not persisted; `show` retrieves the current body from the mailbox using the stored provider ID.
 

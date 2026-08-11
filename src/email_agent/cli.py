@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC, date, datetime, timedelta
+from datetime import time as datetime_time
 from typing import Annotated
 
 import typer
@@ -11,10 +13,9 @@ from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.llm import get_model
 from email_agent.mail import create_mail_provider
 from email_agent.pipeline import (
-    INBOX_GROUP_ORDER,
+    PRIORITY_GROUP_ORDER,
     EmailPipeline,
-    InboxGroup,
-    LocalMessageStatus,
+    PriorityGroup,
     triage_inbox,
 )
 from email_agent.scaffolding import (
@@ -42,15 +43,9 @@ app.add_typer(config_app, name="config")
 app.add_typer(account_app, name="account")
 
 GROUP_COLORS = {
-    InboxGroup.NEEDS_REPLY: typer.colors.YELLOW,
-    InboxGroup.IMPORTANT: typer.colors.BRIGHT_RED,
-    InboxGroup.INFORMATIONAL: typer.colors.CYAN,
-    InboxGroup.IGNORED: typer.colors.BRIGHT_BLACK,
-}
-STATUS_COLORS = {
-    LocalMessageStatus.NEW: typer.colors.BRIGHT_MAGENTA,
-    LocalMessageStatus.TRIAGED: typer.colors.YELLOW,
-    LocalMessageStatus.PROCESSED: typer.colors.GREEN,
+    PriorityGroup.URGENT: typer.colors.BRIGHT_RED,
+    PriorityGroup.NORMAL: typer.colors.CYAN,
+    PriorityGroup.LOW: typer.colors.BRIGHT_BLACK,
 }
 
 
@@ -159,32 +154,31 @@ def validate_config():
     )
 
 
-@app.command(
-    epilog="""
-Message states are local to email-agent and are separate from read/unread status:
-
-  NEW        Classified for the first time during this inbox run.
-  TRIAGED    Classified previously, but not handled by process or monitor.
-  PROCESSED  Full processing completed; a draft was saved when required.
-"""
-)
+@app.command()
 def inbox(
     account: Annotated[str, typer.Option(help="Mailbox email address.")],
     limit: int = 20,
     unread: Annotated[
         bool, typer.Option("--unread", help="Show only provider-unread messages.")
     ] = False,
-    unprocessed: Annotated[
-        bool, typer.Option("--unprocessed", help="Show only locally unprocessed messages.")
+    snoozed: Annotated[
+        bool, typer.Option("--snoozed", help="Show messages deferred until later.")
+    ] = False,
+    done: Annotated[bool, typer.Option("--done", help="Show handled messages.")] = False,
+    all_messages: Annotated[
+        bool, typer.Option("--all", help="Show open, snoozed, and done messages.")
     ] = False,
 ):
-    """Display recent Inbox messages grouped by classification.
+    """Display the assistant's prioritized view of recent Inbox messages.
 
-    By default this behaves like a normal inbox and includes messages regardless
-    of provider read state or local workflow state. Use the optional filters for
-    operational views. This command may classify and store metadata, but it never
-    generates drafts or marks full processing complete.
+    The default view contains messages that still need attention. Category says
+    what a message is, priority controls its position, and Draft ready means the
+    assistant prepared a reply. Use --done, --snoozed, or --all for other views.
     """
+    selected = sum((snoozed, done, all_messages))
+    if selected > 1:
+        raise typer.BadParameter("Use only one of --snoozed, --done, or --all")
+    attention = "all" if all_messages else "snoozed" if snoozed else "done" if done else "open"
     _, configured, provider, database, agents = _components(account)
     typer.echo(f"Checking {configured.email}...")
     items = triage_inbox(
@@ -193,11 +187,11 @@ def inbox(
         database,
         limit,
         unread_only=unread,
-        unprocessed_only=unprocessed,
+        attention=attention,
     )
     typer.echo(f"\n{len(items)} recent messages")
 
-    for group in INBOX_GROUP_ORDER:
+    for group in PRIORITY_GROUP_ORDER:
         grouped = [item for item in items if item.group is group]
         if not grouped:
             continue
@@ -206,12 +200,13 @@ def inbox(
         for item in grouped:
             sender = item.message.from_name or item.message.from_address
             _message_id(item.local_id)
-            typer.echo(f". {sender} — {item.message.subject}  ", nl=False)
-            typer.secho(
-                item.status.value,
-                fg=STATUS_COLORS[item.status],
-                bold=item.status is LocalMessageStatus.NEW,
-            )
+            typer.echo(f"  {sender} — {item.message.subject}")
+            details = [item.classification.category.replace("_", " ").title()]
+            if item.draft_ready:
+                details.append("Draft ready")
+            if attention == "all":
+                details.append(item.attention_state.title())
+            typer.secho(f"    {' · '.join(details)}", fg=GROUP_COLORS[group])
 
 
 def _render(result):
@@ -222,7 +217,7 @@ def _render(result):
         f"\n{result.message.from_name or result.message.from_address}\n{result.message.subject}"
     )
     typer.echo(
-        f"\nClassification: {c.category.upper()}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply required: {'YES' if c.requires_reply else 'NO'}"
+        f"\nCategory: {c.category.replace('_', ' ').title()}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply recommended: {'YES' if c.requires_reply else 'NO'}"
     )
     if c.requires_escalation:
         typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
@@ -293,7 +288,9 @@ def show_message(message_id: int):
     typer.echo(f"Subject: {message.subject}\n")
     typer.echo(message.content or "(No plain-text body)")
     if classification:
-        typer.echo(f"\nClassification: {classification['category'].upper()}")
+        typer.echo(f"\nCategory: {classification['category'].replace('_', ' ').title()}")
+        typer.echo(f"Priority: {classification['priority'].upper()}")
+        typer.echo(f"Attention: {row['attention_state'].title()}")
         typer.echo(f"Confidence: {classification['confidence']:.2f}")
         typer.echo(f"Summary: {classification['summary']}")
         if classification.get("requires_escalation"):
@@ -329,6 +326,79 @@ def approve(message_id: int):
     if not Database(settings.database_path).approve(message_id):
         raise typer.BadParameter("draft not found")
     typer.secho("Draft approved locally. No email was sent.", fg=typer.colors.GREEN, bold=True)
+
+
+@app.command()
+def done(
+    message_id: Annotated[int, typer.Argument(help="Local message ID.")],
+    delete_draft: Annotated[
+        bool,
+        typer.Option(
+            "--delete-draft",
+            help="Also delete an untouched generated draft; reviewed drafts are preserved.",
+        ),
+    ] = False,
+):
+    """Mark a message handled here or in another channel."""
+    settings = Settings()
+    database = Database(settings.database_path)
+    row = database.set_attention(message_id, "done")
+    if not row:
+        raise typer.BadParameter("message not found")
+    deleted = database.delete_generated_drafts(message_id) if delete_draft else 0
+    typer.secho(f"✓ Marked “{row['subject']}” done.", fg=typer.colors.GREEN, bold=True)
+    typer.echo("The email remains in your mailbox.")
+    if deleted:
+        typer.echo("Deleted the untouched generated draft.")
+
+
+def _parse_snooze(value: str) -> datetime:
+    """Parse `tomorrow`, an ISO date, or an ISO datetime in the local timezone."""
+    local_tz = datetime.now().astimezone().tzinfo
+    if value.lower() == "tomorrow":
+        tomorrow = datetime.now(local_tz).date() + timedelta(days=1)
+        return datetime.combine(tomorrow, datetime_time(hour=9), tzinfo=local_tz)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        try:
+            parsed = datetime.combine(date.fromisoformat(value), datetime_time(hour=9))
+        except ValueError as exc:
+            raise typer.BadParameter(
+                "--until must be 'tomorrow', YYYY-MM-DD, or an ISO datetime"
+            ) from exc
+    return parsed.replace(tzinfo=local_tz) if parsed.tzinfo is None else parsed
+
+
+@app.command()
+def snooze(
+    message_id: Annotated[int, typer.Argument(help="Local message ID.")],
+    until: Annotated[
+        str, typer.Option(help="When to reopen: tomorrow, YYYY-MM-DD, or ISO datetime.")
+    ],
+):
+    """Hide a message from the open inbox until a later time."""
+    wake_at = _parse_snooze(until)
+    if wake_at.astimezone(UTC) <= datetime.now(UTC):
+        raise typer.BadParameter("--until must be in the future")
+    settings = Settings()
+    row = Database(settings.database_path).set_attention(
+        message_id, "snoozed", snoozed_until=wake_at
+    )
+    if not row:
+        raise typer.BadParameter("message not found")
+    typer.secho(f"✓ Snoozed “{row['subject']}”.", fg=typer.colors.GREEN, bold=True)
+    typer.echo(f"Returns to Open at {wake_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}.")
+
+
+@app.command()
+def reopen(message_id: Annotated[int, typer.Argument(help="Local message ID.")]):
+    """Return a done or snoozed message to the open inbox."""
+    settings = Settings()
+    row = Database(settings.database_path).set_attention(message_id, "open")
+    if not row:
+        raise typer.BadParameter("message not found")
+    typer.secho(f"✓ Reopened “{row['subject']}”.", fg=typer.colors.GREEN, bold=True)
 
 
 if __name__ == "__main__":

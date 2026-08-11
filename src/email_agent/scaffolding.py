@@ -92,7 +92,8 @@ def generate_account(
         rendered = ", ".join(str(prompt.relative_to(root)) for prompt in existing_prompts)
         raise FileExistsError(f"Refusing to overwrite existing files: {rendered}")
 
-    template_root = files("email_agent").joinpath("templates", template.value)
+    template_directory = "customer_support" if template is AgentTemplate.SUPPORT else template.value
+    template_root = files("email_agent").joinpath("templates", template_directory)
     agent_text = template_root.joinpath("agent.yaml").read_text()
     replacements = {
         "AGENT_NAME": display_name or email,

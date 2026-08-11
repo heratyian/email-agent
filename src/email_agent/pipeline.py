@@ -18,35 +18,15 @@ class ProcessedEmail:
     draft: Draft | None
 
 
-class InboxGroup(StrEnum):
-    """User-facing inbox sections from the personal Gmail user story."""
+class PriorityGroup(StrEnum):
+    """Familiar priority sections used to order the assistant's inbox."""
 
-    NEEDS_REPLY = "Needs Reply"
-    IMPORTANT = "Important"
-    INFORMATIONAL = "Informational"
-    IGNORED = "Ignored"
-
-
-class LocalMessageStatus(StrEnum):
-    """Local agent state, independent of the mailbox provider's read/unread flag.
-
-    NEW means this inbox run classified the message for the first time. TRIAGED
-    means a previous inbox run stored its classification but the processing
-    workflow has not handled it. PROCESSED means ``process`` or ``monitor``
-    completed agent handling and generated a draft when one was required.
-    """
-
-    NEW = "NEW"
-    TRIAGED = "TRIAGED"
-    PROCESSED = "PROCESSED"
+    URGENT = "Urgent"
+    NORMAL = "Normal"
+    LOW = "Low Priority"
 
 
-INBOX_GROUP_ORDER = (
-    InboxGroup.NEEDS_REPLY,
-    InboxGroup.IMPORTANT,
-    InboxGroup.INFORMATIONAL,
-    InboxGroup.IGNORED,
-)
+PRIORITY_GROUP_ORDER = (PriorityGroup.URGENT, PriorityGroup.NORMAL, PriorityGroup.LOW)
 
 
 @dataclass(frozen=True)
@@ -56,22 +36,18 @@ class TriagedEmail:
     local_id: int
     message: EmailMessage
     classification: EmailClassification
-    group: InboxGroup
-    status: LocalMessageStatus
+    group: PriorityGroup
+    attention_state: str
+    draft_ready: bool
 
 
-def inbox_group(classification: EmailClassification) -> InboxGroup:
-    """Map the detailed classification schema to one user-facing inbox section."""
-    if classification.requires_reply:
-        return InboxGroup.NEEDS_REPLY
-    if classification.category in {"urgent", "unknown"} or classification.priority in {
-        "high",
-        "urgent",
-    }:
-        return InboxGroup.IMPORTANT
-    if classification.category in {"spam", "newsletter"}:
-        return InboxGroup.IGNORED
-    return InboxGroup.INFORMATIONAL
+def inbox_group(classification: EmailClassification) -> PriorityGroup:
+    """Collapse model priority into three recognizable inbox sections."""
+    if classification.priority in {"urgent", "high"}:
+        return PriorityGroup.URGENT
+    if classification.priority == "low":
+        return PriorityGroup.LOW
+    return PriorityGroup.NORMAL
 
 
 def triage_inbox(
@@ -81,38 +57,36 @@ def triage_inbox(
     limit: int = 20,
     *,
     unread_only: bool = False,
-    unprocessed_only: bool = False,
+    attention: str = "open",
 ) -> list[TriagedEmail]:
     """Classify and return recent Inbox mail without generating drafts.
 
-    Previously stored classifications are reused. A newly classified message is
-    returned as NEW, an existing unprocessed classification as TRIAGED, and a
-    message completed by the processing workflow as PROCESSED.
+    Previously stored classifications are reused. ``attention`` controls whether
+    open, snoozed, done, or all recent messages are returned.
     """
     if limit < 1:
         return []
     results: list[TriagedEmail] = []
     messages = provider.get_messages(limit, unread_only=unread_only)
     for message in sorted(messages, key=lambda item: item.received_at, reverse=True):
-        processed = database.is_processed(message.account_id, message.provider_id)
-        if unprocessed_only and processed:
-            continue
         saved = database.get_triage(message.account_id, message.provider_id)
         if saved:
             local_id, classification = saved
-            status = LocalMessageStatus.PROCESSED if processed else LocalMessageStatus.TRIAGED
         else:
             thread = provider.get_thread(message.provider_id)
             classification = agents.classify(message, thread)
             local_id = database.save_triage(message, classification)
-            status = LocalMessageStatus.PROCESSED if processed else LocalMessageStatus.NEW
+        state = database.attention_state(local_id)
+        if attention != "all" and state != attention:
+            continue
         results.append(
             TriagedEmail(
                 local_id=local_id,
                 message=message,
                 classification=classification,
                 group=inbox_group(classification),
-                status=status,
+                attention_state=state,
+                draft_ready=database.has_draft(local_id),
             )
         )
     return results

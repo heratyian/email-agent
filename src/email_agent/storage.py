@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
@@ -39,6 +40,9 @@ class Database:
                     received_at TEXT NOT NULL,
                     triaged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     processed_at TEXT,
+                    attention_state TEXT NOT NULL DEFAULT 'open',
+                    snoozed_until TEXT,
+                    done_at TEXT,
                     UNIQUE(account_id, provider_message_id)
                 );
                 CREATE TABLE IF NOT EXISTS classifications (
@@ -64,6 +68,14 @@ class Database:
                 db.execute(
                     "UPDATE messages SET triaged_at=COALESCE(processed_at, CURRENT_TIMESTAMP)"
                 )
+            if "attention_state" not in columns:
+                db.execute(
+                    "ALTER TABLE messages ADD COLUMN attention_state TEXT NOT NULL DEFAULT 'open'"
+                )
+            if "snoozed_until" not in columns:
+                db.execute("ALTER TABLE messages ADD COLUMN snoozed_until TEXT")
+            if "done_at" not in columns:
+                db.execute("ALTER TABLE messages ADD COLUMN done_at TEXT")
             run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
             if "profile_id" in run_columns and "account_id" not in run_columns:
                 db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_id TO account_id")
@@ -80,7 +92,13 @@ class Database:
         return bool(row)
 
     @staticmethod
-    def _upsert_message(db, message: EmailMessage, *, processed: bool) -> int:
+    def _upsert_message(
+        db,
+        message: EmailMessage,
+        *,
+        processed: bool,
+        attention_state: str | None = None,
+    ) -> int:
         db.execute(
             """
             INSERT INTO messages(
@@ -112,6 +130,17 @@ class Database:
                 processed,
             ),
         )
+        if attention_state is not None:
+            db.execute(
+                """
+                UPDATE messages
+                SET attention_state=?,
+                    done_at=CASE WHEN ?='done' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                    snoozed_until=NULL
+                WHERE account_id=? AND provider_message_id=?
+                """,
+                (attention_state, attention_state, message.account_id, message.provider_id),
+            )
         return db.execute(
             "SELECT id FROM messages WHERE account_id=? AND provider_message_id=?",
             (message.account_id, message.provider_id),
@@ -127,7 +156,12 @@ class Database:
     def save_triage(self, message: EmailMessage, classification: EmailClassification) -> int:
         """Assign a local ID and save classification without marking processing complete."""
         with self.connect() as db:
-            message_id = self._upsert_message(db, message, processed=False)
+            message_id = self._upsert_message(
+                db,
+                message,
+                processed=False,
+                attention_state=self.recommended_attention(classification),
+            )
             self._save_classification(db, message_id, classification)
         return message_id
 
@@ -149,6 +183,16 @@ class Database:
             return None
         return row["id"], EmailClassification.model_validate_json(row["payload"])
 
+    @staticmethod
+    def recommended_attention(classification: EmailClassification) -> str:
+        """Translate an agent recommendation into the simple user-facing workflow."""
+        needs_attention = (
+            classification.requires_reply
+            or classification.requires_escalation
+            or classification.priority in {"high", "urgent"}
+        )
+        return "open" if needs_attention else "done"
+
     def save_result(
         self,
         message: EmailMessage,
@@ -157,7 +201,14 @@ class Database:
     ) -> tuple[int, Draft | None]:
         """Persist the completed processing result and optional review draft."""
         with self.connect() as db:
-            message_id = self._upsert_message(db, message, processed=True)
+            existing = db.execute(
+                "SELECT attention_state FROM messages WHERE account_id=? AND provider_message_id=?",
+                (message.account_id, message.provider_id),
+            ).fetchone()
+            attention = None if existing else self.recommended_attention(classification)
+            message_id = self._upsert_message(
+                db, message, processed=True, attention_state=attention
+            )
             self._save_classification(db, message_id, classification)
             draft = None
             if draft_reply:
@@ -222,6 +273,69 @@ class Database:
                 "SELECT m.*, c.payload classification FROM messages m LEFT JOIN classifications c ON c.message_id=m.id WHERE m.id=?",
                 (message_id,),
             ).fetchone()
+
+    def attention_state(self, message_id: int) -> str | None:
+        """Return the effective state, reopening an expired snooze when necessary."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT attention_state, snoozed_until FROM messages WHERE id=?", (message_id,)
+            ).fetchone()
+            if not row:
+                return None
+            if (
+                row["attention_state"] == "snoozed"
+                and row["snoozed_until"]
+                and datetime.fromisoformat(row["snoozed_until"]) <= datetime.now(UTC)
+            ):
+                db.execute(
+                    "UPDATE messages SET attention_state='open', snoozed_until=NULL WHERE id=?",
+                    (message_id,),
+                )
+                return "open"
+            return row["attention_state"]
+
+    def set_attention(
+        self, message_id: int, state: str, *, snoozed_until: datetime | None = None
+    ) -> sqlite3.Row | None:
+        """Set open, snoozed, or done state and return the affected message."""
+        if state not in {"open", "snoozed", "done"}:
+            raise ValueError(f"Unsupported attention state: {state}")
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM messages WHERE id=?", (message_id,)).fetchone()
+            if not row:
+                return None
+            db.execute(
+                """
+                UPDATE messages
+                SET attention_state=?, snoozed_until=?,
+                    done_at=CASE WHEN ?='done' THEN CURRENT_TIMESTAMP ELSE NULL END
+                WHERE id=?
+                """,
+                (
+                    state,
+                    snoozed_until.astimezone(UTC).isoformat() if snoozed_until else None,
+                    state,
+                    message_id,
+                ),
+            )
+        return row
+
+    def delete_generated_drafts(self, message_id: int) -> int:
+        """Delete untouched model-generated drafts for one local message."""
+        with self.connect() as db:
+            cursor = db.execute(
+                "DELETE FROM drafts WHERE message_id=? AND status='generated'", (message_id,)
+            )
+        return cursor.rowcount
+
+    def has_draft(self, message_id: int) -> bool:
+        """Return whether a non-rejected local draft exists for a message."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM drafts WHERE message_id=? AND status!='rejected' LIMIT 1",
+                (message_id,),
+            ).fetchone()
+        return bool(row)
 
     def approve(self, message_id: int) -> bool:
         with self.connect() as db:

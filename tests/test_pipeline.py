@@ -6,8 +6,7 @@ from email_agent.config import AgentConfig
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.pipeline import (
     EmailPipeline,
-    InboxGroup,
-    LocalMessageStatus,
+    PriorityGroup,
     inbox_group,
     triage_inbox,
 )
@@ -106,7 +105,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
                 summary="Question",
                 confidence=0.9,
             ),
-            InboxGroup.NEEDS_REPLY,
+            PriorityGroup.NORMAL,
         ),
         (
             EmailClassification(
@@ -116,7 +115,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
                 summary="Security alert",
                 confidence=0.9,
             ),
-            InboxGroup.IMPORTANT,
+            PriorityGroup.URGENT,
         ),
         (
             EmailClassification(
@@ -126,7 +125,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
                 summary="Order shipped",
                 confidence=0.9,
             ),
-            InboxGroup.INFORMATIONAL,
+            PriorityGroup.LOW,
         ),
         (
             EmailClassification(
@@ -136,7 +135,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
                 summary="Newsletter",
                 confidence=0.9,
             ),
-            InboxGroup.IGNORED,
+            PriorityGroup.LOW,
         ),
         (
             EmailClassification(
@@ -146,7 +145,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
                 summary="Uncertain",
                 confidence=0.4,
             ),
-            InboxGroup.IMPORTANT,
+            PriorityGroup.NORMAL,
         ),
     ],
 )
@@ -166,8 +165,8 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     db = Database(tmp_path / "test.db")
     agents = FakeAgents()
     results = triage_inbox(FakeProvider(message), agents, db)
-    assert results[0].group is InboxGroup.NEEDS_REPLY
-    assert results[0].status is LocalMessageStatus.NEW
+    assert results[0].group is PriorityGroup.NORMAL
+    assert results[0].attention_state == "open"
     assert results[0].local_id > 0
     assert db.show_message(results[0].local_id)["provider_message_id"] == "triage-only"
     assert db.is_processed(message.account_id, message.provider_id) is False
@@ -175,7 +174,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
 
     repeated = triage_inbox(FakeProvider(message), agents, db)
     assert repeated[0].local_id == results[0].local_id
-    assert repeated[0].status is LocalMessageStatus.TRIAGED
+    assert repeated[0].attention_state == "open"
     assert agents.classification_calls == 1
 
     processed = EmailPipeline(
@@ -187,5 +186,30 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
 
     browsed = triage_inbox(FakeProvider(message), agents, db)
     assert browsed[0].local_id == results[0].local_id
-    assert browsed[0].status is LocalMessageStatus.PROCESSED
-    assert triage_inbox(FakeProvider(message), agents, db, unprocessed_only=True) == []
+    assert browsed[0].attention_state == "open"
+
+
+def test_attention_workflow_and_expired_snooze(tmp_path):
+    message = EmailMessage(
+        provider_id="attention",
+        account_id="support@example.com",
+        from_address="customer@example.com",
+        subject="Handled on Slack",
+        text_body="Can you help?",
+        received_at=datetime.now(UTC),
+    )
+    db = Database(tmp_path / "test.db")
+    local_id = db.save_triage(message, FakeAgents().classify(message, EmailThread(messages=[])))
+
+    assert db.attention_state(local_id) == "open"
+    assert db.set_attention(local_id, "done") is not None
+    assert db.attention_state(local_id) == "done"
+    assert (
+        db.set_attention(
+            local_id,
+            "snoozed",
+            snoozed_until=datetime(2000, 1, 1, tzinfo=UTC),
+        )
+        is not None
+    )
+    assert db.attention_state(local_id) == "open"

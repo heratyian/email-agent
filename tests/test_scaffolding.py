@@ -83,9 +83,16 @@ def test_top_level_help_shows_combined_account_initialization():
     assert "profile init" not in result.output
 
 
-def test_inbox_help_uses_account_and_explains_states():
+def test_inbox_help_uses_account_and_attention_views():
     result = runner.invoke(app, ["inbox", "--help"])
     assert result.exit_code == 0
     assert "--account" in result.output
     assert "--profile" not in result.output
-    assert all(state in result.output for state in ("NEW", "TRIAGED", "PROCESSED"))
+    assert all(option in result.output for option in ("--snoozed", "--done", "--all"))
+
+
+@pytest.mark.parametrize("command", ["done", "snooze", "reopen"])
+def test_attention_commands_are_in_top_level_help(command):
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert command in result.output
