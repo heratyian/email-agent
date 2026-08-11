@@ -37,8 +37,9 @@ INBOX_GROUP_ORDER = (
 
 @dataclass(frozen=True)
 class TriagedEmail:
-    """A message paired with its read-only inbox classification."""
+    """A message paired with its persisted inbox classification."""
 
+    local_id: int
     message: EmailMessage
     classification: EmailClassification
     group: InboxGroup
@@ -59,17 +60,23 @@ def inbox_group(classification: EmailClassification) -> InboxGroup:
 
 
 def triage_inbox(provider, agents, database, limit: int = 20) -> list[TriagedEmail]:
-    """Classify unprocessed mail without persisting results or generating drafts."""
+    """Persist triage metadata without generating drafts or completing processing."""
     if limit < 1:
         return []
     results: list[TriagedEmail] = []
     for message in provider.get_new_messages(limit):
         if database.is_processed(message.account_id, message.provider_id):
             continue
-        thread = provider.get_thread(message.provider_id)
-        classification = agents.classify(message, thread)
+        saved = database.get_triage(message.account_id, message.provider_id)
+        if saved:
+            local_id, classification = saved
+        else:
+            thread = provider.get_thread(message.provider_id)
+            classification = agents.classify(message, thread)
+            local_id = database.save_triage(message, classification)
         results.append(
             TriagedEmail(
+                local_id=local_id,
                 message=message,
                 classification=classification,
                 group=inbox_group(classification),

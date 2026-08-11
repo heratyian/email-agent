@@ -23,7 +23,11 @@ class FakeProvider:
 
 
 class FakeAgents:
+    def __init__(self):
+        self.classification_calls = 0
+
     def classify(self, message, thread):
+        self.classification_calls += 1
         return EmailClassification(
             category="support_request",
             requires_reply=True,
@@ -120,7 +124,7 @@ def test_inbox_grouping(classification, expected):
     assert inbox_group(classification) is expected
 
 
-def test_inbox_triage_does_not_persist_or_generate_drafts(tmp_path):
+def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     message = EmailMessage(
         provider_id="triage-only",
         account_id="receipt_ai_support",
@@ -133,5 +137,18 @@ def test_inbox_triage_does_not_persist_or_generate_drafts(tmp_path):
     agents = FakeAgents()
     results = triage_inbox(FakeProvider(message), agents, db)
     assert results[0].group is InboxGroup.NEEDS_REPLY
+    assert results[0].local_id > 0
+    assert db.show_message(results[0].local_id)["provider_message_id"] == "triage-only"
     assert db.is_processed(message.account_id, message.provider_id) is False
     assert db.list_drafts() == []
+
+    repeated = triage_inbox(FakeProvider(message), agents, db)
+    assert repeated[0].local_id == results[0].local_id
+    assert agents.classification_calls == 1
+
+    processed = EmailPipeline(
+        Settings().profile("receipt_ai_support"), FakeProvider(message), agents, db
+    ).process()
+    assert processed[0].local_id == results[0].local_id
+    assert processed[0].draft is not None
+    assert db.is_processed(message.account_id, message.provider_id) is True

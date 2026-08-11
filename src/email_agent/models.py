@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 
 class EmailMessage(BaseModel):
+    """Provider-neutral representation of an email message."""
+
     provider_id: str
     thread_id: str | None = None
     account_id: str
@@ -32,6 +34,8 @@ class EmailThread(BaseModel):
 
 
 class EmailClassification(BaseModel):
+    """Validated triage decision produced by the classification agent."""
+
     category: Literal[
         "spam",
         "newsletter",
@@ -52,6 +56,8 @@ class EmailClassification(BaseModel):
 
 
 class DraftReply(BaseModel):
+    """Model-generated reply suggestion, never a sent message."""
+
     recipient: str
     subject: str
     body: str
@@ -62,6 +68,8 @@ class DraftReply(BaseModel):
 
 
 class Draft(BaseModel):
+    """Locally persisted review item."""
+
     id: UUID = Field(default_factory=uuid4)
     account_id: str
     source_message_id: str

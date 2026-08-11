@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Annotated
 
@@ -168,15 +169,14 @@ def inbox(profile: Annotated[str, typer.Option()], limit: int = 20):
     items = triage_inbox(provider, agents, database, limit)
     typer.echo(f"\n{len(items)} new messages")
 
-    numbered_items = list(enumerate(items, 1))
     for group in INBOX_GROUP_ORDER:
-        grouped = [(index, item) for index, item in numbered_items if item.group is group]
+        grouped = [item for item in items if item.group is group]
         if not grouped:
             continue
         typer.echo(f"\n{group.value}\n{'─' * len(group.value)}")
-        for index, item in grouped:
+        for item in grouped:
             sender = item.message.from_name or item.message.from_address
-            typer.echo(f"{index}. {sender} — {item.message.subject}")
+            typer.echo(f"{item.local_id}. {sender} — {item.message.subject}")
 
 
 def _render(result):
@@ -234,15 +234,27 @@ def drafts(profile: Annotated[str | None, typer.Option()] = None):
 
 @app.command("show")
 def show_message(message_id: int):
-    """Show persisted message metadata and classification."""
+    """Retrieve and show a mailbox message using its local database ID."""
     settings = Settings()
     row = Database(settings.database_path).show_message(message_id)
     if not row:
         raise typer.BadParameter("message not found")
-    typer.echo(
-        f"From: {row['from_name'] or row['from_address']}\nSubject: {row['subject']}\nClassification: {row['classification']}"
-    )
-    typer.echo("\nRaw body is not persisted for privacy.")
+    account = settings.accounts[row["account_id"]]
+    provider = create_mail_provider(row["account_id"], account, settings.root)
+    message = provider.get_message(row["provider_message_id"])
+    classification = json.loads(row["classification"]) if row["classification"] else None
+
+    typer.echo(f"From: {message.from_name or message.from_address}")
+    typer.echo(f"Subject: {message.subject}\n")
+    typer.echo(message.content or "(No plain-text body)")
+    if classification:
+        typer.echo(f"\nClassification: {classification['category'].upper()}")
+        typer.echo(f"Confidence: {classification['confidence']:.2f}")
+        typer.echo(f"Summary: {classification['summary']}")
+        if classification.get("requires_escalation"):
+            typer.echo(
+                f"\n⚠ Human attention required\n{classification.get('escalation_reason') or 'Review required.'}"
+            )
 
 
 @app.command("draft")
