@@ -94,10 +94,6 @@ class ImapProvider:
         finally:
             client.logout()
 
-    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
-        """Return unread messages for the processing workflow."""
-        return self.get_messages(limit, unread_only=True)
-
     def _fetch(self, client, message_id: str, mailbox: str = "INBOX") -> EmailMessage:
         status, data = client.uid("fetch", message_id, "(BODY.PEEK[])")
         if status != "OK" or not data or not isinstance(data[0], tuple):

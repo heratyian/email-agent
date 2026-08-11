@@ -134,10 +134,16 @@ class EmailPipeline:
         )
 
     def process(self, limit: int = 20) -> list[ProcessedEmail]:
+        """Process recent messages that have not already been processed locally.
+
+        Provider read/unread state is deliberately ignored. A message may have
+        been read in another mail client without having been handled by the
+        agent, so the local database is the source of truth for this workflow.
+        """
         if limit < 1:
             return []
         results: list[ProcessedEmail] = []
-        for message in self.provider.get_new_messages(limit):
+        for message in self.provider.get_messages(limit, unread_only=False):
             if self.database.is_processed(message.account_id, message.provider_id):
                 continue
             started = perf_counter()

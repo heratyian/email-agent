@@ -121,10 +121,6 @@ class GmailProvider:
         messages = [self.get_message(item["id"]) for item in result.get("messages", [])]
         return sorted(messages, key=lambda message: message.received_at, reverse=True)
 
-    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
-        """Return unread Inbox messages for the processing workflow."""
-        return self.get_messages(limit, unread_only=True)
-
     def get_message(self, message_id: str, mailbox: str = "INBOX") -> EmailMessage:
         data = (
             self._client()

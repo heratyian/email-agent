@@ -19,11 +19,10 @@ class FakeProvider:
     def __init__(self, message):
         self.message = message
         self.synced = []
-
-    def get_new_messages(self, limit=20):
-        return [self.message]
+        self.message_queries = []
 
     def get_messages(self, limit=20, *, unread_only=False):
+        self.message_queries.append((limit, unread_only))
         return [self.message]
 
     def get_thread(self, message_id, mailbox="INBOX"):
@@ -97,6 +96,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
     assert results[0].draft.status == "generated"
     assert len(db.list_drafts()) == 1
     assert provider.synced == [("abc", "action")]
+    assert provider.message_queries == [(20, False)]
     assert db.category_was_synced(results[0].local_id, "action") is True
     assert (
         EmailPipeline(

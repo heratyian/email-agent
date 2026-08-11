@@ -54,7 +54,7 @@ GROUP_COLORS = {
 
 def _category_name(category: str | None) -> str:
     """Render an optional category for human-facing CLI output."""
-    return category.replace("_", " ").title() if category else "Uncategorized"
+    return category.replace("_", " ") if category else "Uncategorized"
 
 
 def _message_id(value: int, *, prefix: str = "") -> None:
