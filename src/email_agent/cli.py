@@ -10,7 +10,13 @@ from email_agent.agents import EmailAgents
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.llm import get_model
 from email_agent.mail import create_mail_provider
-from email_agent.pipeline import INBOX_GROUP_ORDER, EmailPipeline, triage_inbox
+from email_agent.pipeline import (
+    INBOX_GROUP_ORDER,
+    EmailPipeline,
+    InboxGroup,
+    LocalMessageStatus,
+    triage_inbox,
+)
 from email_agent.scaffolding import (
     AccountProvider,
     ModelProvider,
@@ -39,6 +45,23 @@ account_app = typer.Typer(help="Create and manage mailbox accounts.")
 app.add_typer(config_app, name="config")
 app.add_typer(profile_app, name="profile")
 app.add_typer(account_app, name="account")
+
+GROUP_COLORS = {
+    InboxGroup.NEEDS_REPLY: typer.colors.YELLOW,
+    InboxGroup.IMPORTANT: typer.colors.BRIGHT_RED,
+    InboxGroup.INFORMATIONAL: typer.colors.CYAN,
+    InboxGroup.IGNORED: typer.colors.BRIGHT_BLACK,
+}
+STATUS_COLORS = {
+    LocalMessageStatus.NEW: typer.colors.BRIGHT_MAGENTA,
+    LocalMessageStatus.TRIAGED: typer.colors.YELLOW,
+    LocalMessageStatus.PROCESSED: typer.colors.GREEN,
+}
+
+
+def _message_id(value: int, *, prefix: str = "") -> None:
+    """Print a styled local message ID without ending the line."""
+    typer.secho(f"{prefix}{value}", fg=typer.colors.CYAN, bold=True, nl=False)
 
 
 def _components(profile_name: str, with_agents: bool = True):
@@ -101,7 +124,11 @@ def init_account(
     except (TypeError, ValueError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    typer.echo(f"Created account '{generated.account_id}' in {generated.path.name}.")
+    typer.secho(
+        f"Created account '{generated.account_id}' in {generated.path.name}.",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
     if provider is AccountProvider.GMAIL:
         typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
     else:
@@ -122,8 +149,12 @@ def validate_config():
         for prompt in (profile.prompts.system, profile.prompts.classify, profile.prompts.reply):
             if not (settings.root / prompt).is_file():
                 raise typer.BadParameter(f"Missing prompt: {prompt}")
-        typer.echo(f"✓ {profile.id} v{profile.version}")
-    typer.echo(f"Validated {len(profiles)} profiles; sending is disabled.")
+        typer.secho(f"✓ {profile.id} v{profile.version}", fg=typer.colors.GREEN)
+    typer.secho(
+        f"Validated {len(profiles)} profiles; sending is disabled.",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
 
 
 @profile_app.command("init")
@@ -153,49 +184,98 @@ def init_profile(
     except (TypeError, ValueError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    typer.echo(f"Created profile: {generated.profile.relative_to(Settings().root)}")
-    typer.echo(f"Created prompts: {generated.prompts[0].parent.relative_to(Settings().root)}/")
+    typer.secho(
+        f"Created profile: {generated.profile.relative_to(Settings().root)}",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
+    typer.secho(
+        f"Created prompts: {generated.prompts[0].parent.relative_to(Settings().root)}/",
+        fg=typer.colors.GREEN,
+    )
     typer.echo("\nNext:")
     typer.echo(f"1. Edit the generated profile and prompts for '{name}'.")
     typer.echo("2. Validate: email-agent config validate")
     typer.echo(f"3. Run: email-agent inbox --profile {name}")
 
 
-@app.command()
-def inbox(profile: Annotated[str, typer.Option()], limit: int = 20):
-    """Classify new messages and display them in user-facing inbox sections."""
+@app.command(
+    epilog="""
+Message states are local to email-agent and are separate from read/unread status:
+
+  NEW        Classified for the first time during this inbox run.
+  TRIAGED    Classified previously, but not handled by process or monitor.
+  PROCESSED  Full processing completed; a draft was saved when required.
+"""
+)
+def inbox(
+    profile: Annotated[str, typer.Option()],
+    limit: int = 20,
+    unread: Annotated[
+        bool, typer.Option("--unread", help="Show only provider-unread messages.")
+    ] = False,
+    unprocessed: Annotated[
+        bool, typer.Option("--unprocessed", help="Show only locally unprocessed messages.")
+    ] = False,
+):
+    """Display recent Inbox messages grouped by classification.
+
+    By default this behaves like a normal inbox and includes messages regardless
+    of provider read state or local workflow state. Use the optional filters for
+    operational views. This command may classify and store metadata, but it never
+    generates drafts or marks full processing complete.
+    """
     _, selected, provider, database, agents = _components(profile)
     typer.echo(f"Checking {selected.name}...")
-    items = triage_inbox(provider, agents, database, limit)
-    typer.echo(f"\n{len(items)} new messages")
+    items = triage_inbox(
+        provider,
+        agents,
+        database,
+        limit,
+        unread_only=unread,
+        unprocessed_only=unprocessed,
+    )
+    typer.echo(f"\n{len(items)} recent messages")
 
     for group in INBOX_GROUP_ORDER:
         grouped = [item for item in items if item.group is group]
         if not grouped:
             continue
-        typer.echo(f"\n{group.value}\n{'─' * len(group.value)}")
+        typer.secho(f"\n{group.value}", fg=GROUP_COLORS[group], bold=True)
+        typer.secho("─" * len(group.value), fg=GROUP_COLORS[group])
         for item in grouped:
             sender = item.message.from_name or item.message.from_address
-            typer.echo(f"{item.local_id}. {sender} — {item.message.subject}")
+            _message_id(item.local_id)
+            typer.echo(f". {sender} — {item.message.subject}  ", nl=False)
+            typer.secho(
+                item.status.value,
+                fg=STATUS_COLORS[item.status],
+                bold=item.status is LocalMessageStatus.NEW,
+            )
 
 
 def _render(result):
     c = result.classification
+    typer.echo()
+    _message_id(result.local_id, prefix="#")
     typer.echo(
-        f"\n#{result.local_id}\n{result.message.from_name or result.message.from_address}\n{result.message.subject}"
+        f"\n{result.message.from_name or result.message.from_address}\n{result.message.subject}"
     )
     typer.echo(
         f"\nClassification: {c.category.upper()}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply required: {'YES' if c.requires_reply else 'NO'}"
     )
     if c.requires_escalation:
-        typer.echo(f"\n⚠ Human attention required\n{c.escalation_reason}")
+        typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
+        typer.echo(c.escalation_reason)
     if result.reply:
-        typer.echo(f"\nSuggested response:\n\n{result.reply.body}\n\nSaved to local review queue.")
+        typer.secho("\nSuggested response:", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"\n{result.reply.body}")
+        typer.secho("\nSaved to local review queue.", fg=typer.colors.GREEN)
 
 
 @app.command()
 def process(profile: Annotated[str, typer.Option()], limit: int = 20):
-    """Classify new messages and save suggested replies to the local review queue."""
+    """Complete pending message processing and save suggested replies for review."""
     _, selected, provider, database, agents = _components(profile)
     typer.echo(f"Connecting to {selected.name}...")
     results = EmailPipeline(selected, provider, agents, database).process(limit)
@@ -252,9 +332,12 @@ def show_message(message_id: int):
         typer.echo(f"Confidence: {classification['confidence']:.2f}")
         typer.echo(f"Summary: {classification['summary']}")
         if classification.get("requires_escalation"):
-            typer.echo(
-                f"\n⚠ Human attention required\n{classification.get('escalation_reason') or 'Review required.'}"
+            typer.secho(
+                "\n⚠ Human attention required",
+                fg=typer.colors.BRIGHT_RED,
+                bold=True,
             )
+            typer.echo(classification.get("escalation_reason") or "Review required.")
 
 
 @app.command("draft")
@@ -280,7 +363,7 @@ def approve(message_id: int):
     settings = Settings()
     if not Database(settings.database_path).approve(message_id):
         raise typer.BadParameter("draft not found")
-    typer.echo("Draft approved locally. No email was sent.")
+    typer.secho("Draft approved locally. No email was sent.", fg=typer.colors.GREEN, bold=True)
 
 
 if __name__ == "__main__":

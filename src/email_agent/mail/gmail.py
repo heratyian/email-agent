@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import UTC, datetime
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from pathlib import Path
 
@@ -13,6 +13,8 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
 class GmailProvider:
+    """Read-only Gmail API adapter using an installed-app OAuth flow."""
+
     def __init__(self, account_id: str, config: AccountConfig, root: Path):
         self.account_id, self.config, self.root = account_id, config, root
         self._service = None
@@ -66,6 +68,13 @@ class GmailProvider:
         while stack:
             part = stack.pop()
             stack.extend(part.get("parts", []))
+            if part.get("filename"):
+                continue
+            headers_for_part = {
+                header["name"].lower(): header["value"] for header in part.get("headers", [])
+            }
+            if "attachment" in headers_for_part.get("content-disposition", "").lower():
+                continue
             mime = part.get("mimeType")
             body = self._decode(part.get("body", {}).get("data"))
             if mime == "text/plain" and body and text is None:
@@ -75,8 +84,12 @@ class GmailProvider:
         sender_name, sender_address = parseaddr(headers.get("from", ""))
         try:
             received = parsedate_to_datetime(headers.get("date", ""))
-        except (TypeError, ValueError):
-            received = datetime.fromtimestamp(int(data["internalDate"]) / 1000).astimezone()
+        except (TypeError, ValueError, OverflowError):
+            received = None
+        if received is None:
+            received = datetime.fromtimestamp(int(data["internalDate"]) / 1000, tz=UTC)
+        elif received.tzinfo is None:
+            received = received.replace(tzinfo=UTC)
         return EmailMessage(
             provider_id=data["id"],
             thread_id=data.get("threadId"),
@@ -93,12 +106,19 @@ class GmailProvider:
             references=headers.get("references", "").split(),
         )
 
-    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
+    def get_messages(self, limit: int = 20, *, unread_only: bool = False) -> list[EmailMessage]:
+        """Return recent Inbox messages, optionally restricted to unread mail."""
+        if limit < 1:
+            return []
         service = self._client()
-        result = (
-            service.users().messages().list(userId="me", q="is:unread", maxResults=limit).execute()
-        )
-        return [self.get_message(item["id"]) for item in result.get("messages", [])]
+        query = "in:inbox is:unread" if unread_only else "in:inbox"
+        result = service.users().messages().list(userId="me", q=query, maxResults=limit).execute()
+        messages = [self.get_message(item["id"]) for item in result.get("messages", [])]
+        return sorted(messages, key=lambda message: message.received_at, reverse=True)
+
+    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
+        """Return unread Inbox messages for the processing workflow."""
+        return self.get_messages(limit, unread_only=True)
 
     def get_message(self, message_id: str) -> EmailMessage:
         data = (

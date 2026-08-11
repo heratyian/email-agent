@@ -3,7 +3,7 @@ from __future__ import annotations
 import email
 import imaplib
 import os
-from datetime import UTC
+from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
@@ -17,6 +17,8 @@ def _header(value: str | None) -> str:
 
 
 class ImapProvider:
+    """Read-only IMAP adapter that uses BODY.PEEK to preserve unread state."""
+
     def __init__(self, account_id: str, config: AccountConfig):
         self.account_id, self.config = account_id, config
 
@@ -47,7 +49,11 @@ class ImapProvider:
             elif part.get_content_type() == "text/html" and html is None:
                 html = decoded
         sender_name, sender_address = parseaddr(_header(msg.get("From")))
-        received = parsedate_to_datetime(msg.get("Date"))
+        try:
+            received = parsedate_to_datetime(msg.get("Date"))
+        except (TypeError, ValueError, OverflowError):
+            received = None
+        received = received or datetime.now(UTC)
         if received.tzinfo is None:
             received = received.replace(tzinfo=UTC)
         references = (msg.get("References") or "").split()
@@ -67,14 +73,24 @@ class ImapProvider:
             references=references,
         )
 
-    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
+    def get_messages(self, limit: int = 20, *, unread_only: bool = False) -> list[EmailMessage]:
+        """Return recent messages, optionally restricted to unread mail."""
+        if limit < 1:
+            return []
         client = self._connect()
         try:
-            _, data = client.uid("search", None, "UNSEEN")
-            ids = data[0].split()[-limit:]
+            criterion = "UNSEEN" if unread_only else "ALL"
+            status, data = client.uid("search", None, criterion)
+            if status != "OK" or not data:
+                raise RuntimeError("IMAP message search failed")
+            ids = reversed(data[0].split()[-limit:])
             return [self._fetch(client, value.decode()) for value in ids]
         finally:
             client.logout()
+
+    def get_new_messages(self, limit: int = 20) -> list[EmailMessage]:
+        """Return unread messages for the processing workflow."""
+        return self.get_messages(limit, unread_only=True)
 
     def _fetch(self, client, message_id: str) -> EmailMessage:
         status, data = client.uid("fetch", message_id, "(BODY.PEEK[])")

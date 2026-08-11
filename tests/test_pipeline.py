@@ -4,7 +4,13 @@ import pytest
 
 from email_agent.config import Settings
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
-from email_agent.pipeline import EmailPipeline, InboxGroup, inbox_group, triage_inbox
+from email_agent.pipeline import (
+    EmailPipeline,
+    InboxGroup,
+    LocalMessageStatus,
+    inbox_group,
+    triage_inbox,
+)
 from email_agent.storage import Database
 
 
@@ -13,6 +19,9 @@ class FakeProvider:
         self.message = message
 
     def get_new_messages(self, limit=20):
+        return [self.message]
+
+    def get_messages(self, limit=20, *, unread_only=False):
         return [self.message]
 
     def get_thread(self, message_id):
@@ -137,6 +146,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     agents = FakeAgents()
     results = triage_inbox(FakeProvider(message), agents, db)
     assert results[0].group is InboxGroup.NEEDS_REPLY
+    assert results[0].status is LocalMessageStatus.NEW
     assert results[0].local_id > 0
     assert db.show_message(results[0].local_id)["provider_message_id"] == "triage-only"
     assert db.is_processed(message.account_id, message.provider_id) is False
@@ -144,6 +154,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
 
     repeated = triage_inbox(FakeProvider(message), agents, db)
     assert repeated[0].local_id == results[0].local_id
+    assert repeated[0].status is LocalMessageStatus.TRIAGED
     assert agents.classification_calls == 1
 
     processed = EmailPipeline(
@@ -152,3 +163,8 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     assert processed[0].local_id == results[0].local_id
     assert processed[0].draft is not None
     assert db.is_processed(message.account_id, message.provider_id) is True
+
+    browsed = triage_inbox(FakeProvider(message), agents, db)
+    assert browsed[0].local_id == results[0].local_id
+    assert browsed[0].status is LocalMessageStatus.PROCESSED
+    assert triage_inbox(FakeProvider(message), agents, db, unprocessed_only=True) == []

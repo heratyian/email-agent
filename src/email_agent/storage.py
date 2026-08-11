@@ -66,6 +66,7 @@ class Database:
                 )
 
     def is_processed(self, account_id: str, provider_id: str) -> bool:
+        """Return whether full agent processing—not merely inbox triage—completed."""
         with self.connect() as db:
             row = db.execute(
                 "SELECT 1 FROM messages WHERE account_id=? AND provider_message_id=? AND processed_at IS NOT NULL",
@@ -119,7 +120,7 @@ class Database:
         )
 
     def save_triage(self, message: EmailMessage, classification: EmailClassification) -> int:
-        """Persist inbox metadata and classification without marking processing complete."""
+        """Assign a local ID and save classification without marking processing complete."""
         with self.connect() as db:
             message_id = self._upsert_message(db, message, processed=False)
             self._save_classification(db, message_id, classification)
@@ -149,6 +150,7 @@ class Database:
         classification: EmailClassification,
         draft_reply: DraftReply | None,
     ) -> tuple[int, Draft | None]:
+        """Persist the completed processing result and optional review draft."""
         with self.connect() as db:
             message_id = self._upsert_message(db, message, processed=True)
             self._save_classification(db, message_id, classification)

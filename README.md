@@ -68,6 +68,8 @@ The default profiles use Ollama (`qwen3`). Run Ollama locally or change `model.p
 
 ```bash
 uv run email-agent inbox --profile personal
+uv run email-agent inbox --profile personal --unread
+uv run email-agent inbox --profile personal --unprocessed
 uv run email-agent process --profile personal
 uv run email-agent drafts --profile personal
 uv run email-agent show 1
@@ -75,6 +77,16 @@ uv run email-agent draft 1
 uv run email-agent approve 1
 uv run email-agent monitor --profile receipt_ai_support --interval 300
 ```
+
+`inbox` behaves like a normal mailbox view: it shows the most recent Inbox messages regardless of provider read state or local processing state, sorts them newest-first, groups them by classification, and labels each message `NEW`, `TRIAGED`, or `PROCESSED`. Use `--unread` or `--unprocessed` when you want a narrower operational view.
+
+The workflow labels are local to email-agent and are independent of Gmail or IMAP read/unread state:
+
+- `NEW`: classified for the first time during the current `inbox` command.
+- `TRIAGED`: classified by a previous `inbox` command but not handled by `process` or `monitor`.
+- `PROCESSED`: full agent processing completed and a local draft was saved when a reply was required.
+
+Running `inbox` again changes a previously `NEW` message to `TRIAGED`; running `process` changes it to `PROCESSED`.
 
 `approve` marks a local draft approved for later review; it does not send or expose a send capability. IMAP drafts remain local in SQLite. Gmail native draft creation is intentionally deferred until the user explicitly saves one in a later milestone.
 

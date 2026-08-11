@@ -142,3 +142,12 @@ def test_top_level_help_shows_initialization_flow():
     assert "email-agent account init personal_gmail --provider gmail" in result.output
     assert "email-agent profile init personal" in result.output
     assert "--provider openai --model gpt-5.4-mini" in result.output
+
+
+def test_inbox_help_explains_local_workflow_states():
+    result = runner.invoke(app, ["inbox", "--help"])
+    assert result.exit_code == 0
+    assert "NEW" in result.output
+    assert "TRIAGED" in result.output
+    assert "PROCESSED" in result.output
+    assert "separate from read/unread" in result.output
