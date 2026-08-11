@@ -15,7 +15,6 @@ accounts:
     credentials_file: secrets/credentials.json
     token_file: secrets/token.json
     agent:
-      name: Personal Agent
       model: {provider: openai, model: test-model}
       system_prompt: prompts/person/system.md
       safety: {allow_drafts: true, allow_send: false}
@@ -40,7 +39,6 @@ def test_category_action_is_imap_only():
                 "email": "person@example.com",
                 "category_action": "move",
                 "agent": {
-                    "name": "Test",
                     "model": {"provider": "openai", "model": "test"},
                     "system_prompt": "prompts/system.md",
                 },

@@ -66,7 +66,6 @@ def generate_account(
     *,
     model_provider: ModelProvider,
     model: str,
-    display_name: str | None = None,
     imap_host: str | None = None,
     imap_port: int = 993,
     smtp_host: str | None = None,
@@ -102,7 +101,6 @@ def generate_account(
     template_root = files("email_agent").joinpath("templates", template_directory)
     agent_text = template_root.joinpath("agent.yaml").read_text()
     replacements = {
-        "AGENT_NAME": display_name or email,
         "MODEL_PROVIDER": model_provider.value,
         "MODEL_NAME": model,
         "PROMPT_DIR": f"prompts/{slug}",

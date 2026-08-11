@@ -74,7 +74,6 @@ class FakeMoveProvider(FakeProvider):
 def make_agent() -> AgentConfig:
     return AgentConfig.model_validate(
         {
-            "name": "Test Agent",
             "model": {"provider": "openai", "model": "test-model"},
             "system_prompt": "prompts/test/system.md",
         }

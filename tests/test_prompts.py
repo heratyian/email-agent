@@ -12,7 +12,6 @@ def test_classification_prompt_uses_system_prompt_and_configured_categories(tmp_
     prompt_path.write_text("Write warmly and escalate legal matters.")
     agent = AgentConfig.model_validate(
         {
-            "name": "Test",
             "model": {"provider": "openai", "model": "test"},
             "system_prompt": "prompts/system.md",
             "categories": {

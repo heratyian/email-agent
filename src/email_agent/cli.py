@@ -80,7 +80,7 @@ def accounts():
     """List configured mailbox accounts without connecting to them."""
     settings = Settings()
     for account_id, account in settings.accounts.items():
-        typer.echo(f"{account_id}: {account.provider} ({account.agent.name})")
+        typer.echo(f"{account_id}: {account.provider}")
 
 
 @account_app.command("init")
@@ -90,7 +90,6 @@ def init_account(
     template: Annotated[AgentTemplate, typer.Option(help="Agent system-prompt template.")],
     model_provider: Annotated[ModelProvider, typer.Option(help="Model provider.")],
     model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
-    display_name: Annotated[str | None, typer.Option(help="Human-readable agent name.")] = None,
     imap_host: Annotated[str | None, typer.Option(help="IMAP server hostname.")] = None,
     imap_port: Annotated[int, typer.Option(help="IMAP SSL port.")] = 993,
     smtp_host: Annotated[
@@ -122,7 +121,6 @@ def init_account(
             template,
             model_provider=model_provider,
             model=model,
-            display_name=display_name,
             imap_host=imap_host,
             imap_port=imap_port,
             smtp_host=smtp_host,
@@ -158,7 +156,7 @@ def validate_config():
         agent = account.agent
         if not (settings.root / agent.system_prompt).is_file():
             raise typer.BadParameter(f"Missing system prompt: {agent.system_prompt}")
-        typer.secho(f"✓ {account_id} ({agent.name}) v{agent.version}", fg=typer.colors.GREEN)
+        typer.secho(f"✓ {account_id} v{agent.version}", fg=typer.colors.GREEN)
     typer.secho(
         f"Validated {len(settings.accounts)} accounts; sending is disabled.",
         fg=typer.colors.GREEN,

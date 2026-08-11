@@ -45,7 +45,6 @@ def _default_categories() -> dict[str, str]:
 class AgentConfig(BaseModel):
     """Model, system prompt, categories, and enforced safety policy."""
 
-    name: str
     version: int = 1
     model: ModelConfig
     system_prompt: str

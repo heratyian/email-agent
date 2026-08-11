@@ -159,7 +159,6 @@ class ReclassificationAgents:
 def test_reclassify_all_accepts_unknown_stored_category(monkeypatch):
     agent = AgentConfig.model_validate(
         {
-            "name": "Test",
             "model": {"provider": "openai", "model": "test"},
             "system_prompt": "prompts/test/system.md",
             "categories": {"action": "Requires my response."},
