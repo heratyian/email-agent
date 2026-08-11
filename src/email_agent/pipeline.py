@@ -121,9 +121,10 @@ def triage_inbox(
 class EmailPipeline:
     """Deterministic orchestration around classification and optional drafting."""
 
-    def __init__(self, profile, provider, agents, database):
-        self.profile, self.provider, self.agents, self.database = (
-            profile,
+    def __init__(self, account_id, agent, provider, agents, database):
+        self.account_id, self.agent, self.provider, self.agents, self.database = (
+            account_id,
+            agent,
             provider,
             agents,
             database,
@@ -140,14 +141,18 @@ class EmailPipeline:
             thread = self.provider.get_thread(message.provider_id)
             classification = self.agents.classify(message, thread)
             reply = None
-            if classification.requires_reply and self.profile.safety.allow_drafts:
+            if classification.requires_reply and self.agent.safety.allow_drafts:
                 reply = self.agents.draft(message, thread, classification)
                 words = reply.body.split()
-                if len(words) > self.profile.behavior.max_reply_words:
-                    reply.body = " ".join(words[: self.profile.behavior.max_reply_words])
+                if len(words) > self.agent.behavior.max_reply_words:
+                    reply.body = " ".join(words[: self.agent.behavior.max_reply_words])
             local_id, draft = self.database.save_result(message, classification, reply)
             self.database.record_run(
-                local_id, self.profile, round((perf_counter() - started) * 1000), bool(reply)
+                local_id,
+                self.account_id,
+                self.agent,
+                round((perf_counter() - started) * 1000),
+                bool(reply),
             )
             self.provider.mark_processed(message.provider_id)
             results.append(ProcessedEmail(local_id, message, classification, reply, draft))

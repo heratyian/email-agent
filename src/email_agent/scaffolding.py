@@ -8,9 +8,11 @@ from pathlib import Path
 
 import yaml
 
+from email_agent.config import AccountConfig
 
-class ProfileTemplate(StrEnum):
-    """Built-in starting points supported by the profile generator."""
+
+class AgentTemplate(StrEnum):
+    """Built-in agent behavior templates available during account creation."""
 
     PERSONAL = "personal"
     CUSTOMER_SUPPORT = "customer_support"
@@ -24,7 +26,7 @@ class AccountProvider(StrEnum):
 
 
 class ModelProvider(StrEnum):
-    """Model providers supported by the model factory and profile generator."""
+    """Model providers supported by the model factory."""
 
     OPENAI = "openai"
     OLLAMA = "ollama"
@@ -32,96 +34,32 @@ class ModelProvider(StrEnum):
 
 
 @dataclass(frozen=True)
-class GeneratedProfile:
-    """Paths created by a profile generation operation."""
-
-    profile: Path
-    prompts: tuple[Path, ...]
-
-
-@dataclass(frozen=True)
 class GeneratedAccount:
-    """Result of an account generation operation."""
+    """Configuration and prompt paths created for one account."""
 
     path: Path
     account_id: str
+    prompts: tuple[Path, ...]
 
 
-def _validate_identifier(name: str, kind: str) -> None:
-    if not re.fullmatch(r"[a-z][a-z0-9_-]*", name):
-        raise ValueError(
-            f"{kind} name must start with a lowercase letter and contain only "
-            "lowercase letters, numbers, underscores, or hyphens"
-        )
+def _validate_email(value: str) -> None:
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        raise ValueError("Account ID must be a valid email address")
 
 
-def _validate_account(root: Path, account: str) -> None:
-    accounts_path = root / "accounts.yaml"
-    if not accounts_path.is_file():
-        raise ValueError(
-            "accounts.yaml was not found; create an account first with 'email-agent account init'"
-        )
-    raw = yaml.safe_load(accounts_path.read_text()) or {}
-    if account not in raw.get("accounts", {}):
-        raise ValueError(f"Account '{account}' is not defined in accounts.yaml")
-
-
-def generate_profile(
-    root: Path,
-    name: str,
-    account: str,
-    template: ProfileTemplate,
-    *,
-    display_name: str | None = None,
-    model_provider: ModelProvider,
-    model: str,
-    force: bool = False,
-) -> GeneratedProfile:
-    """Generate a private profile and its prompts from a built-in template."""
-    root = root.resolve()
-    _validate_identifier(name, "Profile")
-    _validate_account(root, account)
-
-    profile_path = root / "profiles" / f"{name}.yaml"
-    prompt_dir = root / "prompts" / name
-    prompt_paths = tuple(
-        prompt_dir / filename for filename in ("system.md", "classify.md", "reply.md")
-    )
-    destinations = (profile_path, *prompt_paths)
-    existing = [path for path in destinations if path.exists()]
-    if existing and not force:
-        rendered = ", ".join(str(path.relative_to(root)) for path in existing)
-        raise FileExistsError(f"Refusing to overwrite existing files: {rendered}")
-
-    template_root = files("email_agent").joinpath("templates", template.value)
-    profile_text = template_root.joinpath("profile.yaml").read_text()
-    replacements = {
-        "PROFILE_ID": name,
-        "PROFILE_NAME": display_name or name.replace("_", " ").replace("-", " ").title(),
-        "ACCOUNT_ID": account,
-        "MODEL_PROVIDER": model_provider.value,
-        "MODEL_NAME": model,
-    }
-    for placeholder, value in replacements.items():
-        profile_text = profile_text.replace(f"{{{{{placeholder}}}}}", value)
-
-    profile_data = yaml.safe_load(profile_text)
-
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_dir.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(yaml.safe_dump(profile_data, sort_keys=False))
-    for destination in prompt_paths:
-        destination.write_text(template_root.joinpath(destination.name).read_text())
-
-    return GeneratedProfile(profile=profile_path, prompts=prompt_paths)
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
 def generate_account(
     root: Path,
-    name: str,
+    email: str,
     provider: AccountProvider,
+    template: AgentTemplate,
     *,
-    email: str | None = None,
+    model_provider: ModelProvider,
+    model: str,
+    display_name: str | None = None,
     imap_host: str | None = None,
     imap_port: int = 993,
     smtp_host: str | None = None,
@@ -132,40 +70,70 @@ def generate_account(
     token_file: str | None = None,
     force: bool = False,
 ) -> GeneratedAccount:
-    """Create or add an account entry without placing secrets in YAML."""
+    """Create one email-address account with nested agent behavior and prompts."""
     root = root.resolve()
-    _validate_identifier(name, "Account")
+    _validate_email(email)
     path = root / "accounts.yaml"
+    slug = _slug(email)
+    prompt_dir = root / "prompts" / slug
+    prompt_paths = tuple(
+        prompt_dir / filename for filename in ("system.md", "classify.md", "reply.md")
+    )
 
     raw = yaml.safe_load(path.read_text()) if path.is_file() else None
     if raw is None:
         raw = {"accounts": {}}
     if not isinstance(raw, dict) or not isinstance(raw.get("accounts"), dict):
         raise TypeError("accounts.yaml must contain an 'accounts' mapping")
-    if name in raw["accounts"] and not force:
-        raise FileExistsError(f"Account '{name}' already exists in accounts.yaml")
+    if email in raw["accounts"] and not force:
+        raise FileExistsError(f"Account '{email}' already exists in accounts.yaml")
+    existing_prompts = [prompt for prompt in prompt_paths if prompt.exists()]
+    if existing_prompts and not force:
+        rendered = ", ".join(str(prompt.relative_to(root)) for prompt in existing_prompts)
+        raise FileExistsError(f"Refusing to overwrite existing files: {rendered}")
 
+    template_root = files("email_agent").joinpath("templates", template.value)
+    agent_text = template_root.joinpath("agent.yaml").read_text()
+    replacements = {
+        "AGENT_NAME": display_name or email,
+        "MODEL_PROVIDER": model_provider.value,
+        "MODEL_NAME": model,
+        "PROMPT_DIR": f"prompts/{slug}",
+    }
+    for placeholder, value in replacements.items():
+        agent_text = agent_text.replace(f"{{{{{placeholder}}}}}", value)
+
+    env_prefix = re.sub(r"[^A-Z0-9]", "_", email.upper())
+    account: dict = {
+        "provider": provider.value,
+        "email": email,
+    }
     if provider is AccountProvider.GMAIL:
-        account = {
-            "provider": "gmail",
-            "credentials_file": credentials_file or f"secrets/{name}_credentials.json",
-            "token_file": token_file or f"secrets/{name}_token.json",
-        }
+        account.update(
+            {
+                "credentials_file": credentials_file or f"secrets/{slug}_credentials.json",
+                "token_file": token_file or f"secrets/{slug}_token.json",
+            }
+        )
     else:
-        if not email or not imap_host:
-            raise ValueError("IMAP accounts require --email and --imap-host")
-        env_prefix = re.sub(r"[^A-Z0-9]", "_", name.upper())
-        account = {
-            "provider": "imap",
-            "email": email,
-            "username_env": username_env or f"{env_prefix}_EMAIL_USERNAME",
-            "password_env": password_env or f"{env_prefix}_EMAIL_PASSWORD",
-            "imap_host": imap_host,
-            "imap_port": imap_port,
-        }
+        if not imap_host:
+            raise ValueError("IMAP accounts require --imap-host")
+        account.update(
+            {
+                "username_env": username_env or f"{env_prefix}_USERNAME",
+                "password_env": password_env or f"{env_prefix}_PASSWORD",
+                "imap_host": imap_host,
+                "imap_port": imap_port,
+            }
+        )
         if smtp_host:
             account.update({"smtp_host": smtp_host, "smtp_port": smtp_port})
+    account["agent"] = yaml.safe_load(agent_text)
+    AccountConfig.model_validate(account)
 
-    raw["accounts"][name] = account
+    raw["accounts"][email] = account
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    for destination in prompt_paths:
+        destination.write_text(template_root.joinpath(destination.name).read_text())
     path.write_text(yaml.safe_dump(raw, sort_keys=False))
-    return GeneratedAccount(path=path, account_id=name)
+    return GeneratedAccount(path=path, account_id=email, prompts=prompt_paths)

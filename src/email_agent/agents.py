@@ -4,24 +4,26 @@ from pathlib import Path
 
 from langchain.agents import create_agent
 
-from email_agent.config import AgentProfile
+from email_agent.config import AgentConfig
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.prompts import format_thread, system_prompt
 
 
 class EmailAgents:
-    def __init__(self, root: Path, profile: AgentProfile, model):
-        self.profile = profile
+    """LangChain agents for the two bounded LLM tasks in the workflow."""
+
+    def __init__(self, root: Path, agent: AgentConfig, model):
+        self.agent = agent
         self.classifier = create_agent(
             model=model,
             tools=[],
-            system_prompt=system_prompt(root, profile, "classify"),
+            system_prompt=system_prompt(root, agent, "classify"),
             response_format=EmailClassification,
         )
         self.drafter = create_agent(
             model=model,
             tools=[],
-            system_prompt=system_prompt(root, profile, "reply"),
+            system_prompt=system_prompt(root, agent, "reply"),
             response_format=DraftReply,
         )
 

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from email_agent.config import Settings
+from email_agent.config import AgentConfig
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.pipeline import (
     EmailPipeline,
@@ -56,6 +56,20 @@ class FakeAgents:
         )
 
 
+def make_agent() -> AgentConfig:
+    return AgentConfig.model_validate(
+        {
+            "name": "Test Agent",
+            "model": {"provider": "openai", "model": "test-model"},
+            "prompts": {
+                "system": "prompts/test/system.md",
+                "classify": "prompts/test/classify.md",
+                "reply": "prompts/test/reply.md",
+            },
+        }
+    )
+
+
 def test_pipeline_classifies_and_stores_local_draft(tmp_path):
     message = EmailMessage(
         provider_id="abc",
@@ -65,13 +79,20 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
         text_body="I cannot log in",
         received_at=datetime.now(UTC),
     )
-    profile = Settings().profile("receipt_ai_support")
+    agent = make_agent()
     db = Database(tmp_path / "test.db")
-    results = EmailPipeline(profile, FakeProvider(message), FakeAgents(), db).process()
+    results = EmailPipeline(
+        "support@example.com", agent, FakeProvider(message), FakeAgents(), db
+    ).process()
     assert results[0].classification.intent == "login_problem"
     assert results[0].draft.status == "generated"
     assert len(db.list_drafts()) == 1
-    assert EmailPipeline(profile, FakeProvider(message), FakeAgents(), db).process() == []
+    assert (
+        EmailPipeline(
+            "support@example.com", agent, FakeProvider(message), FakeAgents(), db
+        ).process()
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -158,7 +179,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     assert agents.classification_calls == 1
 
     processed = EmailPipeline(
-        Settings().profile("receipt_ai_support"), FakeProvider(message), agents, db
+        "support@example.com", make_agent(), FakeProvider(message), agents, db
     ).process()
     assert processed[0].local_id == results[0].local_id
     assert processed[0].draft is not None

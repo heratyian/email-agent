@@ -1,16 +1,14 @@
-id: "{{PROFILE_ID}}"
-name: "{{PROFILE_NAME}}"
+name: "{{AGENT_NAME}}"
 version: 1
-account: "{{ACCOUNT_ID}}"
 model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
 prompts:
   version: 1
-  system: "prompts/{{PROFILE_ID}}/system.md"
-  classify: "prompts/{{PROFILE_ID}}/classify.md"
-  reply: "prompts/{{PROFILE_ID}}/reply.md"
+  system: "{{PROMPT_DIR}}/system.md"
+  classify: "{{PROMPT_DIR}}/classify.md"
+  reply: "{{PROMPT_DIR}}/reply.md"
 behavior:
   default_tone: warm and concise
   max_reply_words: 120

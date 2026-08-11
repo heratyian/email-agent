@@ -52,8 +52,8 @@ class Database:
                     created_at TEXT NOT NULL, FOREIGN KEY(message_id) REFERENCES messages(id)
                 );
                 CREATE TABLE IF NOT EXISTS agent_runs (
-                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, profile_id TEXT NOT NULL,
-                    profile_version INTEGER NOT NULL, prompt_version INTEGER NOT NULL,
+                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, account_id TEXT NOT NULL,
+                    agent_version INTEGER NOT NULL, prompt_version INTEGER NOT NULL,
                     model TEXT NOT NULL, latency_ms INTEGER NOT NULL, draft_generated INTEGER NOT NULL,
                     error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
@@ -64,6 +64,11 @@ class Database:
                 db.execute(
                     "UPDATE messages SET triaged_at=COALESCE(processed_at, CURRENT_TIMESTAMP)"
                 )
+            run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
+            if "profile_id" in run_columns and "account_id" not in run_columns:
+                db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_id TO account_id")
+            if "profile_version" in run_columns and "agent_version" not in run_columns:
+                db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_version TO agent_version")
 
     def is_processed(self, account_id: str, provider_id: str) -> bool:
         """Return whether full agent processing—not merely inbox triage—completed."""
@@ -181,17 +186,23 @@ class Database:
         return message_id, draft
 
     def record_run(
-        self, message_id: int, profile, latency_ms: int, drafted: bool, error: str | None = None
+        self,
+        message_id: int,
+        account_id: str,
+        agent,
+        latency_ms: int,
+        drafted: bool,
+        error: str | None = None,
     ) -> None:
         with self.connect() as db:
             db.execute(
-                "INSERT INTO agent_runs(message_id,profile_id,profile_version,prompt_version,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO agent_runs(message_id,account_id,agent_version,prompt_version,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?,?,?)",
                 (
                     message_id,
-                    profile.id,
-                    profile.version,
-                    profile.prompts.version,
-                    f"{profile.model.provider}:{profile.model.model}",
+                    account_id,
+                    agent.version,
+                    agent.prompts.version,
+                    f"{agent.model.provider}:{agent.model.model}",
                     latency_ms,
                     drafted,
                     error,

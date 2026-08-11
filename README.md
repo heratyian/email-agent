@@ -1,6 +1,6 @@
 # Email Agent
 
-A profile-driven Python/LangChain email assistant that retrieves unread mail, classifies it with validated structured output, and generates reviewable drafts. It never sends email.
+An account-configured Python/LangChain email assistant that retrieves mail, classifies it with validated structured output, and generates reviewable drafts. It never sends email.
 
 ## Quick start
 
@@ -9,92 +9,69 @@ uv sync --extra dev
 cp .env.example .env
 ```
 
-### Initialize local configuration
+### Create an account
 
-Runtime mailbox configuration, generated agent profiles, and use-case-specific prompts are private and ignored by Git. Generate a Gmail account configuration with:
-
-```bash
-uv run email-agent account init personal_gmail --provider gmail
-```
-
-This creates the ignored `accounts.yaml` and points OAuth files at `secrets/personal_gmail_credentials.json` and `secrets/personal_gmail_token.json`. For an IMAP mailbox:
+Each email address has one mailbox connection and one nested agent configuration. Create a Gmail account and personal agent together:
 
 ```bash
-uv run email-agent account init customer_support \
-  --provider imap \
-  --email support@example.com \
-  --imap-host imap.example.com
-```
-
-IMAP credential values remain in `.env`; the generated YAML contains only their environment-variable names. After creating an account, generate a profile and its editable prompts from either the `personal` or `customer_support` template:
-
-```bash
-uv run email-agent profile init personal \
-  --account personal_gmail \
+uv run email-agent account init you@gmail.com \
+  --provider gmail \
   --template personal \
-  --provider openai \
+  --model-provider openai \
   --model gpt-5.4-mini
 ```
 
-For a support mailbox:
+For an IMAP customer-support mailbox:
 
 ```bash
-uv run email-agent profile init customer_support \
-  --account customer_support \
+uv run email-agent account init support@example.com \
+  --provider imap \
+  --imap-host imap.example.com \
   --template customer_support \
-  --provider ollama \
+  --model-provider ollama \
   --model qwen3
 ```
 
-The generator requires an explicit model provider (`openai`, `ollama`, or `compatible`) and model name; templates do not choose a model. It creates `profiles/<name>.yaml` and `prompts/<name>/`, and refuses to overwrite existing files unless `--force` is supplied. Edit the generated profile and prompts for your use case. Store credentials only in `.env` or the ignored `secrets/` directory—never in YAML profiles or prompt files.
+This creates or updates the ignored `accounts.yaml` and generates editable prompts under `prompts/<email-slug>/`. Connection settings and agent behavior remain separate internally, but users address the mailbox by its actual email address. IMAP credentials stay in `.env`; YAML contains only their environment-variable names. Gmail OAuth files stay in the ignored `secrets/` directory.
 
-Validate the resulting configuration before connecting to a mailbox:
+Validate before connecting:
 
 ```bash
 uv run email-agent config validate
 uv run email-agent accounts
-uv run email-agent process --profile receipt_ai_support --limit 10
 ```
 
-### LLM Model Setup
-
-The default profiles use Ollama (`qwen3`). Run Ollama locally or change `model.provider` and `model.model` in a profile to `openai` and an available model.
-
-### Email Setup
+### Email setup
 
 - See [Gmail OAuth Setup](docs/gmail_oauth_setup.md) for Gmail.
 
-### CLI Commands
+### CLI commands
 
 ```bash
-uv run email-agent inbox --profile personal
-uv run email-agent inbox --profile personal --unread
-uv run email-agent inbox --profile personal --unprocessed
-uv run email-agent process --profile personal
-uv run email-agent drafts --profile personal
+uv run email-agent inbox --account you@gmail.com
+uv run email-agent inbox --account you@gmail.com --unread
+uv run email-agent inbox --account you@gmail.com --unprocessed
+uv run email-agent process --account you@gmail.com
+uv run email-agent drafts --account you@gmail.com
 uv run email-agent show 1
 uv run email-agent draft 1
 uv run email-agent approve 1
-uv run email-agent monitor --profile receipt_ai_support --interval 300
+uv run email-agent monitor --account support@example.com --interval 300
 ```
 
-`inbox` behaves like a normal mailbox view: it shows the most recent Inbox messages regardless of provider read state or local processing state, sorts them newest-first, groups them by classification, and labels each message `NEW`, `TRIAGED`, or `PROCESSED`. Use `--unread` or `--unprocessed` when you want a narrower operational view.
-
-The workflow labels are local to email-agent and are independent of Gmail or IMAP read/unread state:
+`inbox` behaves like a normal mailbox view: it shows recent Inbox messages regardless of provider read state or local processing state, sorts newest-first, groups by classification, and labels each message `NEW`, `TRIAGED`, or `PROCESSED`.
 
 - `NEW`: classified for the first time during the current `inbox` command.
-- `TRIAGED`: classified by a previous `inbox` command but not handled by `process` or `monitor`.
-- `PROCESSED`: full agent processing completed and a local draft was saved when a reply was required.
+- `TRIAGED`: classified previously but not handled by `process` or `monitor`.
+- `PROCESSED`: full agent processing completed; a local draft was saved when required.
 
-Running `inbox` again changes a previously `NEW` message to `TRIAGED`; running `process` changes it to `PROCESSED`.
+These workflow labels are independent of Gmail or IMAP read/unread state. Use `--unread` or `--unprocessed` for narrower operational views.
 
-`approve` marks a local draft approved for later review; it does not send or expose a send capability. IMAP drafts remain local in SQLite. Gmail native draft creation is intentionally deferred until the user explicitly saves one in a later milestone.
-
-Configuration lives in `profiles/`; all prompt content lives in `prompts/`. Credentials are read only from environment variables or ignored OAuth files. Raw email bodies are not logged and only minimal message metadata is persisted.
+`approve` only changes local draft state. It does not send email. Raw email bodies are not persisted; `show` retrieves the current body from the mailbox using the stored provider ID.
 
 ## Architecture
 
-`MailProvider` normalizes Gmail and IMAP into the same models. `EmailPipeline` deterministically retrieves a message, asks separate LangChain agents for classification and drafting, applies safety checks, and persists the result. The model is selected by profile through one factory.
+`AccountConfig` contains a provider-specific mailbox connection and one `AgentConfig`. `MailProvider` normalizes Gmail and IMAP into the same models. `EmailPipeline` deterministically classifies, optionally drafts, applies safety checks, and persists workflow state. The model and prompts are selected from the account's nested agent configuration.
 
 ## Tests
 

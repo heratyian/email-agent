@@ -19,31 +19,26 @@ from email_agent.pipeline import (
 )
 from email_agent.scaffolding import (
     AccountProvider,
+    AgentTemplate,
     ModelProvider,
-    ProfileTemplate,
     generate_account,
-    generate_profile,
 )
 from email_agent.storage import Database
 
 app = typer.Typer(
     no_args_is_help=True,
-    help="Safe, profile-driven email triage and drafting.",
+    help="Safe, account-configured email triage and drafting.",
     epilog="""
 Getting started:
 
-  email-agent account init personal_gmail --provider gmail
-
-  email-agent profile init personal --account personal_gmail --template personal --provider openai --model gpt-5.4-mini
+  email-agent account init me@example.com --provider gmail --template personal --model-provider openai --model gpt-5.4-mini
 
 Then validate with: email-agent config validate
 """,
 )
 config_app = typer.Typer(help="Configuration utilities.")
-profile_app = typer.Typer(help="Create and manage agent profiles.")
 account_app = typer.Typer(help="Create and manage mailbox accounts.")
 app.add_typer(config_app, name="config")
-app.add_typer(profile_app, name="profile")
 app.add_typer(account_app, name="account")
 
 GROUP_COLORS = {
@@ -64,13 +59,17 @@ def _message_id(value: int, *, prefix: str = "") -> None:
     typer.secho(f"{prefix}{value}", fg=typer.colors.CYAN, bold=True, nl=False)
 
 
-def _components(profile_name: str, with_agents: bool = True):
+def _components(account_id: str, with_agents: bool = True):
     settings = Settings()
-    profile = settings.profile(profile_name)
-    provider = create_mail_provider(profile.account, settings.account_for(profile), settings.root)
+    account = settings.account(account_id)
+    provider = create_mail_provider(account_id, account, settings.root)
     database = Database(settings.database_path)
-    agents = EmailAgents(settings.root, profile, get_model(profile.model)) if with_agents else None
-    return settings, profile, provider, database, agents
+    agents = (
+        EmailAgents(settings.root, account.agent, get_model(account.agent.model))
+        if with_agents
+        else None
+    )
+    return settings, account, provider, database, agents
 
 
 @app.command()
@@ -78,14 +77,17 @@ def accounts():
     """List configured mailbox accounts without connecting to them."""
     settings = Settings()
     for account_id, account in settings.accounts.items():
-        typer.echo(f"{account_id}: {account.provider} ({account.email or 'OAuth account'})")
+        typer.echo(f"{account_id}: {account.provider} ({account.agent.name})")
 
 
 @account_app.command("init")
 def init_account(
-    name: Annotated[str, typer.Argument(help="Local account ID, such as 'personal_gmail'.")],
+    email: Annotated[str, typer.Argument(help="Mailbox email address.")],
     provider: Annotated[AccountProvider, typer.Option(help="Mailbox provider.")],
-    email: Annotated[str | None, typer.Option(help="Mailbox address for IMAP.")] = None,
+    template: Annotated[AgentTemplate, typer.Option(help="Agent behavior template.")],
+    model_provider: Annotated[ModelProvider, typer.Option(help="Model provider.")],
+    model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
+    display_name: Annotated[str | None, typer.Option(help="Human-readable agent name.")] = None,
     imap_host: Annotated[str | None, typer.Option(help="IMAP server hostname.")] = None,
     imap_port: Annotated[int, typer.Option(help="IMAP SSL port.")] = 993,
     smtp_host: Annotated[
@@ -108,9 +110,12 @@ def init_account(
     try:
         generated = generate_account(
             PROJECT_ROOT,
-            name,
+            email,
             provider,
-            email=email,
+            template,
+            model_provider=model_provider,
+            model=model,
+            display_name=display_name,
             imap_host=imap_host,
             imap_port=imap_port,
             smtp_host=smtp_host,
@@ -133,70 +138,25 @@ def init_account(
         typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
     else:
         typer.echo("Set the generated username and password environment variables in .env.")
-    typer.echo(
-        f"\nNext: email-agent profile init PROFILE_NAME --account {name} --template personal"
-    )
+    typer.secho(f"Created prompts: {generated.prompts[0].parent.relative_to(PROJECT_ROOT)}/")
+    typer.echo(f"\nNext: email-agent inbox --account {email}")
 
 
 @config_app.command("validate")
 def validate_config():
-    """Validate accounts, profiles, prompts, and the draft-only safety invariant."""
+    """Validate accounts, nested agents, prompts, and draft-only safety."""
     settings = Settings()
-    profiles = sorted((settings.root / "profiles").glob("*.yaml"))
-    for path in profiles:
-        profile = settings.profile(path.stem)
-        settings.account_for(profile)
-        for prompt in (profile.prompts.system, profile.prompts.classify, profile.prompts.reply):
+    for account_id, account in settings.accounts.items():
+        agent = account.agent
+        for prompt in (agent.prompts.system, agent.prompts.classify, agent.prompts.reply):
             if not (settings.root / prompt).is_file():
                 raise typer.BadParameter(f"Missing prompt: {prompt}")
-        typer.secho(f"✓ {profile.id} v{profile.version}", fg=typer.colors.GREEN)
+        typer.secho(f"✓ {account_id} ({agent.name}) v{agent.version}", fg=typer.colors.GREEN)
     typer.secho(
-        f"Validated {len(profiles)} profiles; sending is disabled.",
+        f"Validated {len(settings.accounts)} accounts; sending is disabled.",
         fg=typer.colors.GREEN,
         bold=True,
     )
-
-
-@profile_app.command("init")
-def init_profile(
-    name: Annotated[str, typer.Argument(help="Local profile ID, such as 'work'.")],
-    account: Annotated[str, typer.Option(help="Account ID already defined in accounts.yaml.")],
-    provider: Annotated[ModelProvider, typer.Option(help="Model provider.")],
-    model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
-    template: Annotated[
-        ProfileTemplate, typer.Option(help="Built-in profile and prompt template.")
-    ] = ProfileTemplate.PERSONAL,
-    display_name: Annotated[str | None, typer.Option(help="Human-readable agent name.")] = None,
-    force: Annotated[bool, typer.Option(help="Overwrite an existing generated profile.")] = False,
-):
-    """Create a private profile and editable prompts from a built-in template."""
-    try:
-        generated = generate_profile(
-            Settings().root,
-            name,
-            account,
-            template,
-            display_name=display_name,
-            model_provider=provider,
-            model=model,
-            force=force,
-        )
-    except (TypeError, ValueError, FileExistsError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-    typer.secho(
-        f"Created profile: {generated.profile.relative_to(Settings().root)}",
-        fg=typer.colors.GREEN,
-        bold=True,
-    )
-    typer.secho(
-        f"Created prompts: {generated.prompts[0].parent.relative_to(Settings().root)}/",
-        fg=typer.colors.GREEN,
-    )
-    typer.echo("\nNext:")
-    typer.echo(f"1. Edit the generated profile and prompts for '{name}'.")
-    typer.echo("2. Validate: email-agent config validate")
-    typer.echo(f"3. Run: email-agent inbox --profile {name}")
 
 
 @app.command(
@@ -209,7 +169,7 @@ Message states are local to email-agent and are separate from read/unread status
 """
 )
 def inbox(
-    profile: Annotated[str, typer.Option()],
+    account: Annotated[str, typer.Option(help="Mailbox email address.")],
     limit: int = 20,
     unread: Annotated[
         bool, typer.Option("--unread", help="Show only provider-unread messages.")
@@ -225,8 +185,8 @@ def inbox(
     operational views. This command may classify and store metadata, but it never
     generates drafts or marks full processing complete.
     """
-    _, selected, provider, database, agents = _components(profile)
-    typer.echo(f"Checking {selected.name}...")
+    _, configured, provider, database, agents = _components(account)
+    typer.echo(f"Checking {configured.email}...")
     items = triage_inbox(
         provider,
         agents,
@@ -274,24 +234,28 @@ def _render(result):
 
 
 @app.command()
-def process(profile: Annotated[str, typer.Option()], limit: int = 20):
+def process(account: Annotated[str, typer.Option(help="Mailbox email address.")], limit: int = 20):
     """Complete pending message processing and save suggested replies for review."""
-    _, selected, provider, database, agents = _components(profile)
-    typer.echo(f"Connecting to {selected.name}...")
-    results = EmailPipeline(selected, provider, agents, database).process(limit)
+    _, configured, provider, database, agents = _components(account)
+    typer.echo(f"Connecting to {configured.email}...")
+    results = EmailPipeline(account, configured.agent, provider, agents, database).process(limit)
     typer.echo(f"Found {len(results)} new messages.")
     for result in results:
         _render(result)
 
 
 @app.command()
-def monitor(profile: Annotated[str, typer.Option()], interval: int = 300, limit: int = 20):
+def monitor(
+    account: Annotated[str, typer.Option(help="Mailbox email address.")],
+    interval: int = 300,
+    limit: int = 20,
+):
     """Poll a mailbox until interrupted."""
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
-    _, selected, provider, database, agents = _components(profile)
-    pipeline = EmailPipeline(selected, provider, agents, database)
-    typer.echo(f"Monitoring {selected.name} every {interval}s. Ctrl-C to stop.")
+    _, configured, provider, database, agents = _components(account)
+    pipeline = EmailPipeline(account, configured.agent, provider, agents, database)
+    typer.echo(f"Monitoring {configured.email} every {interval}s. Ctrl-C to stop.")
     try:
         while True:
             for result in pipeline.process(limit):
@@ -302,11 +266,12 @@ def monitor(profile: Annotated[str, typer.Option()], interval: int = 300, limit:
 
 
 @app.command()
-def drafts(profile: Annotated[str | None, typer.Option()] = None):
+def drafts(account: Annotated[str | None, typer.Option()] = None):
     """List locally saved draft suggestions."""
     settings = Settings()
-    account_id = settings.profile(profile).account if profile else None
-    for row in Database(settings.database_path).list_drafts(account_id):
+    if account:
+        settings.account(account)
+    for row in Database(settings.database_path).list_drafts(account):
         typer.echo(
             f"{row['message_id']}: [{row['status']}] To {row['recipient']} — {row['subject']}"
         )

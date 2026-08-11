@@ -41,13 +41,13 @@ The `secrets/` directory and OAuth token files are ignored by Git. Do not commit
 Run a command that connects to Gmail:
 
 ```bash
-uv run email-agent inbox --profile personal
+uv run email-agent inbox --account you@gmail.com
 ```
 
 or:
 
 ```bash
-uv run email-agent process --profile personal --limit 5
+uv run email-agent process --account you@gmail.com --limit 5
 ```
 
 Your browser will open Google's consent flow. Sign in with the same address added under **Test users**. After successful authorization, the app stores the refresh token at:

@@ -5,15 +5,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 data/*.db
+data/*.bak
 secrets/
 credentials.json
 token.json
 
-# Local mailbox and agent configuration
+# Local mailbox and account-specific agent configuration
 /accounts.yaml
-/profiles/*.yaml
 /prompts/*/
 
-# Keep generic application-owned prompts
+# Keep the generic application-owned safety prompt
 !/prompts/shared/
 !/prompts/shared/**

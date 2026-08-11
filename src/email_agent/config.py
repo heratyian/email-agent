@@ -11,29 +11,6 @@ from pydantic import BaseModel, Field, model_validator
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-class AccountConfig(BaseModel):
-    """Connection settings for one mailbox; secret values are environment-only."""
-
-    provider: Literal["gmail", "imap"]
-    email: str | None = None
-    credentials_file: str | None = None
-    token_file: str | None = None
-    username_env: str | None = None
-    password_env: str | None = None
-    imap_host: str | None = None
-    imap_port: int = 993
-    smtp_host: str | None = None
-    smtp_port: int = 465
-
-    @model_validator(mode="after")
-    def provider_fields(self) -> AccountConfig:
-        if self.provider == "imap" and not all(
-            [self.email, self.username_env, self.password_env, self.imap_host]
-        ):
-            raise ValueError("IMAP accounts require email, credential env names, and imap_host")
-        return self
-
-
 class ModelConfig(BaseModel):
     """Provider-independent chat model configuration."""
 
@@ -70,17 +47,39 @@ class SafetyConfig(BaseModel):
         return self
 
 
-class AgentProfile(BaseModel):
-    """All mailbox-specific behavior consumed by the shared agent engine."""
+class AgentConfig(BaseModel):
+    """Model, prompts, behavior, and safety policy nested under one mailbox account."""
 
-    id: str
     name: str
     version: int = 1
-    account: str
     model: ModelConfig
     prompts: PromptConfig
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+
+
+class AccountConfig(BaseModel):
+    """One mailbox connection and its default agent behavior."""
+
+    provider: Literal["gmail", "imap"]
+    email: str
+    credentials_file: str | None = None
+    token_file: str | None = None
+    username_env: str | None = None
+    password_env: str | None = None
+    imap_host: str | None = None
+    imap_port: int = 993
+    smtp_host: str | None = None
+    smtp_port: int = 465
+    agent: AgentConfig
+
+    @model_validator(mode="after")
+    def provider_fields(self) -> AccountConfig:
+        if self.provider == "imap" and not all(
+            [self.username_env, self.password_env, self.imap_host]
+        ):
+            raise ValueError("IMAP accounts require credential env names and imap_host")
+        return self
 
 
 class Settings:
@@ -100,16 +99,9 @@ class Settings:
             configured_path if configured_path.is_absolute() else self.root / configured_path
         )
 
-    def profile(self, name: str) -> AgentProfile:
-        if not name or Path(name).name != name:
-            raise ValueError(f"Invalid profile name: {name}")
-        path = self.root / "profiles" / f"{name}.yaml"
-        if not path.is_file():
-            raise ValueError(f"Unknown profile: {name}")
-        return AgentProfile.model_validate(yaml.safe_load(path.read_text()))
-
-    def account_for(self, profile: AgentProfile) -> AccountConfig:
+    def account(self, email: str) -> AccountConfig:
+        """Return an account by its canonical email-address key."""
         try:
-            return self.accounts[profile.account]
+            return self.accounts[email]
         except KeyError as exc:
-            raise ValueError(f"Profile references unknown account: {profile.account}") from exc
+            raise ValueError(f"Unknown account: {email}") from exc
