@@ -17,10 +17,8 @@ def account(provider: str, **values) -> AccountConfig:
         {
             "provider": provider,
             "email": "person@example.com",
-            "agent": {
-                "model": {"provider": "openai", "model": "test-model"},
-                "system_prompt": "prompts/test/system.md",
-            },
+            "model": {"provider": "openai", "model": "test-model"},
+            "system_prompt": "prompts/test/system.md",
             **values,
         }
     )

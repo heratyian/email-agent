@@ -11,7 +11,7 @@ cp .env.example .env
 
 ### Create an account
 
-Each email address has one mailbox connection and one nested agent configuration. Create a Gmail account and personal agent together:
+Each email address is one complete mailbox configuration. Create a Gmail account with the personal template:
 
 ```bash
 uv run email-agent account init you@gmail.com \
@@ -80,7 +80,7 @@ The default inbox shows messages that still need attention. `done LOCAL_ID` reco
 
 ### Categories and mailbox organization
 
-Categories are the single organization concept. Define them under an account's nested `agent` configuration; the description teaches the classifier when to use each category:
+Categories are the single organization concept. Define them directly under an account; the description teaches the classifier when to use each category:
 
 ```yaml
 categories:
@@ -106,7 +106,7 @@ Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gm
 
 ## Architecture
 
-`AccountConfig` contains a provider-specific mailbox connection and one `AgentConfig`. `MailProvider` normalizes Gmail and IMAP into the same models. `EmailPipeline` deterministically classifies, optionally drafts, applies safety checks, and persists workflow state. Each nested agent selects its model, one system prompt, and simple category taxonomy.
+`AccountConfig` contains the mailbox connection, model, system prompt, and categories in one flat structure. `MailProvider` normalizes Gmail and IMAP into the same models. `EmailPipeline` deterministically classifies, optionally drafts, and persists workflow state. Sending is not implemented, so generated replies always remain local drafts for review.
 
 ## Tests
 

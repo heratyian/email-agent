@@ -68,8 +68,6 @@ def generate_account(
     model: str,
     imap_host: str | None = None,
     imap_port: int = 993,
-    smtp_host: str | None = None,
-    smtp_port: int = 465,
     username_env: str | None = None,
     password_env: str | None = None,
     credentials_file: str | None = None,
@@ -77,7 +75,7 @@ def generate_account(
     category_action: CategoryAction | None = None,
     force: bool = False,
 ) -> GeneratedAccount:
-    """Create one email-address account with a nested agent and system prompt."""
+    """Create one flat email-address account and its system prompt."""
     root = root.resolve()
     _validate_email(email)
     path = root / "accounts.yaml"
@@ -99,20 +97,17 @@ def generate_account(
 
     template_directory = "customer_support" if template is AgentTemplate.SUPPORT else template.value
     template_root = files("email_agent").joinpath("templates", template_directory)
-    agent_text = template_root.joinpath("agent.yaml").read_text()
+    account_text = template_root.joinpath("agent.yaml").read_text()
     replacements = {
         "MODEL_PROVIDER": model_provider.value,
         "MODEL_NAME": model,
         "PROMPT_DIR": f"prompts/{slug}",
     }
     for placeholder, value in replacements.items():
-        agent_text = agent_text.replace(f"{{{{{placeholder}}}}}", value)
+        account_text = account_text.replace(f"{{{{{placeholder}}}}}", value)
 
     env_prefix = re.sub(r"[^A-Z0-9]", "_", email.upper())
-    account: dict = {
-        "provider": provider.value,
-        "email": email,
-    }
+    account: dict = {"provider": provider.value}
     if provider is AccountProvider.GMAIL:
         if category_action is not None:
             raise ValueError("--category-action is only supported for IMAP accounts")
@@ -133,12 +128,10 @@ def generate_account(
                 "imap_port": imap_port,
             }
         )
-        if smtp_host:
-            account.update({"smtp_host": smtp_host, "smtp_port": smtp_port})
         if category_action is not None:
             account["category_action"] = category_action.value
-    account["agent"] = yaml.safe_load(agent_text)
-    AccountConfig.model_validate(account)
+    account.update(yaml.safe_load(account_text))
+    AccountConfig.model_validate({"email": email, **account})
 
     raw["accounts"][email] = account
     prompt_dir.mkdir(parents=True, exist_ok=True)

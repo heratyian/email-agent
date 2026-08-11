@@ -6,7 +6,7 @@ from typing import Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -18,17 +18,6 @@ class ModelConfig(BaseModel):
     model: str = "qwen3"
     temperature: float = 0
     base_url: str | None = None
-
-
-class SafetyConfig(BaseModel):
-    allow_drafts: bool = True
-    allow_send: bool = False
-
-    @model_validator(mode="after")
-    def sending_is_forbidden(self):
-        if self.allow_send:
-            raise ValueError("allow_send must remain false in this release")
-        return self
 
 
 def _default_categories() -> dict[str, str]:
@@ -43,13 +32,18 @@ def _default_categories() -> dict[str, str]:
 
 
 class AgentConfig(BaseModel):
-    """Model, system prompt, categories, and enforced safety policy."""
+    """Internal model, prompt, and category view of an account."""
 
-    version: int = 1
+    model_config = ConfigDict(extra="forbid")
+
     model: ModelConfig
     system_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
-    safety: SafetyConfig = Field(default_factory=SafetyConfig)
+
+    @property
+    def version(self) -> int:
+        """Internal run-record version, intentionally absent from user configuration."""
+        return 1
 
     @field_validator("categories")
     @classmethod
@@ -74,8 +68,10 @@ class AgentConfig(BaseModel):
 class AccountConfig(BaseModel):
     """One mailbox connection and its email assistant configuration."""
 
+    model_config = ConfigDict(extra="forbid")
+
     provider: Literal["gmail", "imap"]
-    email: str
+    email: str = Field(exclude=True)
     credentials_file: str | None = None
     token_file: str | None = None
     username_env: str | None = None
@@ -83,9 +79,23 @@ class AccountConfig(BaseModel):
     imap_host: str | None = None
     imap_port: int = 993
     category_action: Literal["copy", "move"] | None = None
-    smtp_host: str | None = None
-    smtp_port: int = 465
-    agent: AgentConfig
+    model: ModelConfig
+    system_prompt: str
+    categories: dict[str, str] = Field(default_factory=_default_categories)
+
+    @field_validator("categories")
+    @classmethod
+    def valid_categories(cls, value: dict[str, str]) -> dict[str, str]:
+        return AgentConfig.valid_categories(value)
+
+    @property
+    def agent(self) -> AgentConfig:
+        """Return the internal agent view used by classification and drafting."""
+        return AgentConfig(
+            model=self.model,
+            system_prompt=self.system_prompt,
+            categories=self.categories,
+        )
 
     @model_validator(mode="after")
     def provider_fields(self) -> AccountConfig:
@@ -108,7 +118,10 @@ class Settings:
         if not isinstance(raw.get("accounts"), dict):
             raise TypeError("accounts.yaml must contain an 'accounts' mapping")
         self.accounts = {
-            key: AccountConfig.model_validate(value) for key, value in raw["accounts"].items()
+            key: AccountConfig.model_validate(
+                {"email": key, **self._flatten_legacy_account(value)}
+            )
+            for key, value in raw["accounts"].items()
         }
         configured_path = Path(os.getenv("EMAIL_AGENT_DATABASE", "data/email_agent.db"))
         self.database_path = (
@@ -121,3 +134,20 @@ class Settings:
             return self.accounts[email]
         except KeyError as exc:
             raise ValueError(f"Unknown account: {email}") from exc
+
+    @staticmethod
+    def _flatten_legacy_account(value: object) -> dict:
+        """Accept the pre-flattening v0.1 shape while users migrate their YAML."""
+        if not isinstance(value, dict):
+            raise TypeError("Each account must be a mapping")
+        flattened = dict(value)
+        flattened.pop("email", None)
+        flattened.pop("smtp_host", None)
+        flattened.pop("smtp_port", None)
+        legacy_agent = flattened.pop("agent", None)
+        if isinstance(legacy_agent, dict):
+            legacy_agent = dict(legacy_agent)
+            legacy_agent.pop("version", None)
+            legacy_agent.pop("safety", None)
+            flattened.update(legacy_agent)
+        return flattened

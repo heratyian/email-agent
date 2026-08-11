@@ -20,7 +20,7 @@ runner = CliRunner()
 
 
 @pytest.mark.parametrize("template", list(AgentTemplate))
-def test_generates_account_with_nested_agent_and_system_prompt(tmp_path, template):
+def test_generates_flat_account_with_system_prompt(tmp_path, template):
     result = generate_account(
         tmp_path,
         "person@example.com",
@@ -30,9 +30,10 @@ def test_generates_account_with_nested_agent_and_system_prompt(tmp_path, templat
         model="test-model",
     )
     account = yaml.safe_load(result.path.read_text())["accounts"]["person@example.com"]
-    assert account["email"] == "person@example.com"
-    assert account["agent"]["model"]["model"] == "test-model"
-    assert account["agent"]["system_prompt"].startswith("prompts/person-example-com/")
+    assert "email" not in account
+    assert "agent" not in account
+    assert account["model"]["model"] == "test-model"
+    assert account["system_prompt"].startswith("prompts/person-example-com/")
     assert result.system_prompt.is_file()
 
 
@@ -50,7 +51,7 @@ def test_generates_imap_credentials_as_environment_references(tmp_path):
     account = yaml.safe_load(result.path.read_text())["accounts"][result.account_id]
     assert account["username_env"] == "SUPPORT_EXAMPLE_COM_USERNAME"
     assert account["password_env"] == "SUPPORT_EXAMPLE_COM_PASSWORD"
-    assert account["agent"]["model"]["provider"] == "ollama"
+    assert account["model"]["provider"] == "ollama"
     assert account["category_action"] == "move"
 
 
@@ -89,6 +90,7 @@ def test_top_level_help_shows_combined_account_initialization():
     assert result.exit_code == 0
     assert "account init me@example.com" in result.output
     assert "profile init" not in result.output
+    assert "smtp" not in result.output.lower()
 
 
 def test_inbox_help_uses_account_and_attention_views():

@@ -1,4 +1,3 @@
-version: 1
 model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
@@ -11,6 +10,3 @@ categories:
   newsletters: Subscriptions and recurring publications.
   reference: Useful information requiring no action.
   noise: Spam or low-value automated mail.
-safety:
-  allow_drafts: true
-  allow_send: false

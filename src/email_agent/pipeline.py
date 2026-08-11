@@ -165,7 +165,7 @@ class EmailPipeline:
                 thread = self.provider.get_thread(message.provider_id)
                 classification = self.agents.classify(message, thread)
                 reply = None
-                if classification.requires_reply and self.agent.safety.allow_drafts:
+                if classification.requires_reply:
                     reply = self.agents.draft(message, thread, classification)
                     drafted = True
                 destination = category_destination(self.agent, classification)

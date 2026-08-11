@@ -93,10 +93,6 @@ def init_account(
     model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
     imap_host: Annotated[str | None, typer.Option(help="IMAP server hostname.")] = None,
     imap_port: Annotated[int, typer.Option(help="IMAP SSL port.")] = 993,
-    smtp_host: Annotated[
-        str | None, typer.Option(help="Optional SMTP hostname for future use.")
-    ] = None,
-    smtp_port: Annotated[int, typer.Option(help="SMTP SSL port.")] = 465,
     username_env: Annotated[
         str | None, typer.Option(help="Environment variable containing the IMAP username.")
     ] = None,
@@ -124,8 +120,6 @@ def init_account(
             model=model,
             imap_host=imap_host,
             imap_port=imap_port,
-            smtp_host=smtp_host,
-            smtp_port=smtp_port,
             username_env=username_env,
             password_env=password_env,
             credentials_file=credentials_file,
@@ -151,13 +145,13 @@ def init_account(
 
 @config_app.command("validate")
 def validate_config():
-    """Validate accounts, nested agents, system prompts, and draft-only safety."""
+    """Validate mailbox accounts, model settings, categories, and system prompts."""
     settings = Settings()
     for account_id, account in settings.accounts.items():
         agent = account.agent
         if not (settings.root / agent.system_prompt).is_file():
             raise typer.BadParameter(f"Missing system prompt: {agent.system_prompt}")
-        typer.secho(f"✓ {account_id} v{agent.version}", fg=typer.colors.GREEN)
+        typer.secho(f"✓ {account_id}", fg=typer.colors.GREEN)
     typer.secho(
         f"Validated {len(settings.accounts)} accounts; sending is disabled.",
         fg=typer.colors.GREEN,

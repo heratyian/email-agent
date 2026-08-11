@@ -11,23 +11,19 @@ def write_account_config(root: Path) -> None:
 accounts:
   person@example.com:
     provider: gmail
-    email: person@example.com
     credentials_file: secrets/credentials.json
     token_file: secrets/token.json
-    agent:
-      model: {provider: openai, model: test-model}
-      system_prompt: prompts/person/system.md
-      safety: {allow_drafts: true, allow_send: false}
+    model: {provider: openai, model: test-model}
+    system_prompt: prompts/person/system.md
 """
     )
 
 
-def test_account_contains_valid_draft_only_agent(tmp_path):
+def test_account_uses_mapping_key_as_email_and_always_supports_drafts(tmp_path):
     write_account_config(tmp_path)
     settings = Settings(tmp_path)
     account = settings.account("person@example.com")
     assert account.email == "person@example.com"
-    assert account.agent.safety.allow_send is False
     assert account.agent.categories["action"].startswith("Requires")
 
 
@@ -36,12 +32,10 @@ def test_category_action_is_imap_only():
         AccountConfig.model_validate(
             {
                 "provider": "gmail",
-                "email": "person@example.com",
                 "category_action": "move",
-                "agent": {
-                    "model": {"provider": "openai", "model": "test"},
-                    "system_prompt": "prompts/system.md",
-                },
+                "email": "person@example.com",
+                "model": {"provider": "openai", "model": "test"},
+                "system_prompt": "prompts/system.md",
             }
         )
 
@@ -51,12 +45,31 @@ def test_nested_category_paths_are_validated(tmp_path):
     raw = (tmp_path / "accounts.yaml").read_text()
     (tmp_path / "accounts.yaml").write_text(
         raw.replace(
-            "      safety:",
-            "      categories:\n        agent/follow_up: Needs my response.\n      safety:",
+            "    system_prompt:",
+            "    categories:\n      agent/follow_up: Needs my response.\n    system_prompt:",
         )
     )
     agent = Settings(tmp_path).account("person@example.com").agent
     assert agent.categories["agent/follow_up"] == "Needs my response."
+
+
+def test_legacy_nested_agent_shape_is_loaded_during_migration(tmp_path):
+    (tmp_path / "accounts.yaml").write_text(
+        """
+accounts:
+  person@example.com:
+    provider: gmail
+    email: person@example.com
+    agent:
+      version: 1
+      model: {provider: openai, model: test-model}
+      system_prompt: prompts/person/system.md
+      safety: {allow_drafts: true, allow_send: false}
+"""
+    )
+    account = Settings(tmp_path).account("person@example.com")
+    assert account.email == "person@example.com"
+    assert account.model.model == "test-model"
 
 
 def test_unknown_account_is_rejected(tmp_path):
