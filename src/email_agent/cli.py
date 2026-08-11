@@ -17,6 +17,7 @@ from email_agent.pipeline import (
     PRIORITY_GROUP_ORDER,
     EmailPipeline,
     PriorityGroup,
+    ProcessingFailure,
     category_destination,
     triage_inbox,
 )
@@ -244,9 +245,26 @@ def process(account: Annotated[str, typer.Option(help="Mailbox email address.")]
     _, configured, provider, database, agents = _components(account)
     typer.echo(f"Connecting to {configured.email}...")
     results = EmailPipeline(account, configured.agent, provider, agents, database).process(limit)
-    typer.echo(f"Found {len(results)} new messages.")
     for result in results:
-        _render(result)
+        if isinstance(result, ProcessingFailure):
+            label = f"{result.local_id}: " if result.local_id is not None else ""
+            typer.secho(
+                f"{label}{result.message.subject}: {result.error}", fg=typer.colors.BRIGHT_RED
+            )
+        else:
+            _render(result)
+    succeeded = sum(not isinstance(result, ProcessingFailure) for result in results)
+    failed = len(results) - succeeded
+    typer.echo()
+    typer.secho(f"{succeeded} processed", fg=typer.colors.GREEN, bold=True, nl=False)
+    typer.echo(", ", nl=False)
+    typer.secho(
+        f"{failed} failed.",
+        fg=typer.colors.RED if failed else typer.colors.BRIGHT_BLACK,
+        bold=bool(failed),
+    )
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -403,7 +421,13 @@ def monitor(
     try:
         while True:
             for result in pipeline.process(limit):
-                _render(result)
+                if isinstance(result, ProcessingFailure):
+                    typer.secho(
+                        f"{result.message.subject}: {result.error}",
+                        fg=typer.colors.BRIGHT_RED,
+                    )
+                else:
+                    _render(result)
             time.sleep(interval)
     except KeyboardInterrupt:
         typer.echo("Stopped.")

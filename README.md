@@ -76,6 +76,8 @@ The default inbox shows messages that still need attention. `done LOCAL_ID` reco
 
 `done --delete-draft` also removes an untouched generated draft. Reviewed or approved drafts are always preserved. Read/unread status and internal processing bookkeeping remain separate and are not exposed as workflow concepts.
 
+`process` handles each message independently. A model, mailbox, or storage error is reported for that message while the rest of the batch continues. Classification and draft results are saved before mailbox changes, and a message is marked processed only after synchronization succeeds; failed messages remain eligible for the next run without creating duplicate drafts.
+
 ### Categories and mailbox organization
 
 Categories are the single organization concept. Define them under an account's nested `agent` configuration; the description teaches the classifier when to use each category:

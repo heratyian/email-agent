@@ -241,7 +241,7 @@ class Database:
         classification: EmailClassification,
         draft_reply: DraftReply | None,
     ) -> tuple[int, Draft | None]:
-        """Persist the completed processing result and optional review draft."""
+        """Persist a pending result before any external mailbox changes."""
         with self.connect() as db:
             existing = db.execute(
                 "SELECT attention_state FROM messages WHERE account_id=? AND provider_message_id=?",
@@ -249,34 +249,74 @@ class Database:
             ).fetchone()
             attention = None if existing else self.recommended_attention(classification)
             message_id = self._upsert_message(
-                db, message, processed=True, attention_state=attention
+                db, message, processed=False, attention_state=attention
             )
             self._save_classification(db, message_id, classification)
             draft = None
             if draft_reply:
-                draft = Draft(
-                    account_id=message.account_id,
-                    source_message_id=message.provider_id,
-                    to=[draft_reply.recipient],
-                    subject=draft_reply.subject,
-                    body=draft_reply.body,
-                )
-                db.execute(
-                    "INSERT INTO drafts(id,message_id,account_id,source_message_id,recipient,subject,body,status,metadata,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        str(draft.id),
-                        message_id,
-                        draft.account_id,
-                        draft.source_message_id,
-                        draft_reply.recipient,
-                        draft.subject,
-                        draft.body,
-                        draft.status,
-                        draft_reply.model_dump_json(),
-                        draft.created_at.isoformat(),
-                    ),
-                )
+                existing_draft = db.execute(
+                    "SELECT 1 FROM drafts WHERE message_id=? LIMIT 1", (message_id,)
+                ).fetchone()
+                if not existing_draft:
+                    draft = Draft(
+                        account_id=message.account_id,
+                        source_message_id=message.provider_id,
+                        to=[draft_reply.recipient],
+                        subject=draft_reply.subject,
+                        body=draft_reply.body,
+                    )
+                    db.execute(
+                        "INSERT INTO drafts(id,message_id,account_id,source_message_id,recipient,subject,body,status,metadata,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            str(draft.id),
+                            message_id,
+                            draft.account_id,
+                            draft.source_message_id,
+                            draft_reply.recipient,
+                            draft.subject,
+                            draft.body,
+                            draft.status,
+                            draft_reply.model_dump_json(),
+                            draft.created_at.isoformat(),
+                        ),
+                    )
         return message_id, draft
+
+    def complete_result(
+        self,
+        message_id: int,
+        account_id: str,
+        agent,
+        latency_ms: int,
+        drafted: bool,
+        *,
+        destination: str | None = None,
+        sync_result: CategorySyncResult | None = None,
+    ) -> None:
+        """Atomically finalize local state after mailbox synchronization succeeds."""
+        with self.connect() as db:
+            if sync_result is not None and sync_result.source_moved:
+                db.execute(
+                    "UPDATE messages SET provider_uid=?, provider_mailbox=? WHERE id=?",
+                    (sync_result.provider_id, sync_result.mailbox, message_id),
+                )
+            if destination is not None:
+                self._mark_category_synced(db, message_id, destination, sync_result)
+            db.execute(
+                "UPDATE messages SET processed_at=CURRENT_TIMESTAMP WHERE id=?", (message_id,)
+            )
+            db.execute(
+                "INSERT INTO agent_runs(message_id,account_id,agent_version,prompt_version,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?,?,NULL)",
+                (
+                    message_id,
+                    account_id,
+                    agent.version,
+                    agent.version,
+                    f"{agent.model.provider}:{agent.model.model}",
+                    latency_ms,
+                    drafted,
+                ),
+            )
 
     def record_run(
         self,
@@ -447,9 +487,17 @@ class Database:
     ) -> None:
         """Make ``destination`` the sole active managed category for a message."""
         with self.connect() as db:
-            db.execute("UPDATE category_syncs SET active=0 WHERE message_id=?", (message_id,))
-            if destination is None:
-                return
+            self._mark_category_synced(db, message_id, destination, result)
+
+    @staticmethod
+    def _mark_category_synced(
+        db,
+        message_id: int,
+        destination: str | None,
+        result: CategorySyncResult | None,
+    ) -> None:
+        db.execute("UPDATE category_syncs SET active=0 WHERE message_id=?", (message_id,))
+        if destination is not None:
             db.execute(
                 """INSERT INTO category_syncs(
                        message_id, destination, provider_uid, provider_mailbox, active

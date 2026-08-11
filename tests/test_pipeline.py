@@ -8,6 +8,7 @@ from email_agent.models import DraftReply, EmailClassification, EmailMessage, Em
 from email_agent.pipeline import (
     EmailPipeline,
     PriorityGroup,
+    ProcessingFailure,
     category_destination,
     inbox_group,
     triage_inbox,
@@ -70,6 +71,11 @@ class FakeMoveProvider(FakeProvider):
         return CategorySyncResult(provider_id="900", mailbox="action")
 
 
+class FailingSyncProvider(FakeProvider):
+    def sync_category(self, message_id, destination, source_mailbox="INBOX", previous=None):
+        raise RuntimeError("mailbox unavailable")
+
+
 def make_agent() -> AgentConfig:
     return AgentConfig.model_validate(
         {
@@ -123,6 +129,76 @@ def test_pipeline_tracks_moved_imap_uid_without_changing_stable_identity(tmp_pat
     assert row["provider_message_id"] == "abc"
     assert row["provider_uid"] == "900"
     assert row["provider_mailbox"] == "action"
+
+
+def test_pipeline_sync_failure_stays_pending_and_retries_without_duplicate_draft(tmp_path):
+    message = EmailMessage(
+        provider_id="retry-me",
+        account_id="support@example.com",
+        from_address="customer@example.com",
+        subject="Retry me",
+        received_at=datetime.now(UTC),
+    )
+    db = Database(tmp_path / "test.db")
+    agent = make_agent()
+
+    failed = EmailPipeline(
+        "support@example.com", agent, FailingSyncProvider(message), FakeAgents(), db
+    ).process()
+
+    assert isinstance(failed[0], ProcessingFailure)
+    assert failed[0].local_id is not None
+    assert db.is_processed(message.account_id, message.provider_id) is False
+    assert len(db.list_drafts()) == 1
+
+    retried = EmailPipeline(
+        "support@example.com", agent, FakeProvider(message), FakeAgents(), db
+    ).process()
+
+    assert not isinstance(retried[0], ProcessingFailure)
+    assert db.is_processed(message.account_id, message.provider_id) is True
+    assert len(db.list_drafts()) == 1
+
+
+def test_pipeline_isolates_one_message_failure_from_the_rest_of_the_batch(tmp_path):
+    first = EmailMessage(
+        provider_id="fails",
+        account_id="support@example.com",
+        from_address="first@example.com",
+        subject="Fails",
+        received_at=datetime.now(UTC),
+    )
+    second = EmailMessage(
+        provider_id="succeeds",
+        account_id="support@example.com",
+        from_address="second@example.com",
+        subject="Succeeds",
+        received_at=datetime.now(UTC),
+    )
+
+    class MixedProvider(FakeProvider):
+        def get_messages(self, limit=20, *, unread_only=False):
+            return [first, second]
+
+        def get_thread(self, message_id, mailbox="INBOX"):
+            return EmailThread(messages=[first if message_id == "fails" else second])
+
+        def sync_category(
+            self, message_id, destination, source_mailbox="INBOX", previous=None
+        ):
+            if message_id == "fails":
+                raise RuntimeError("first message failed")
+            return super().sync_category(message_id, destination, source_mailbox, previous)
+
+    db = Database(tmp_path / "test.db")
+    results = EmailPipeline(
+        "support@example.com", make_agent(), MixedProvider(first), FakeAgents(), db
+    ).process()
+
+    assert isinstance(results[0], ProcessingFailure)
+    assert not isinstance(results[1], ProcessingFailure)
+    assert db.is_processed("support@example.com", "fails") is False
+    assert db.is_processed("support@example.com", "succeeds") is True
 
 
 @pytest.mark.parametrize(
