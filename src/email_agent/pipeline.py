@@ -154,15 +154,18 @@ class EmailPipeline:
                 reply = self.agents.draft(message, thread, classification)
             destination = category_destination(self.agent, classification)
             if destination is not None:
+                previous = self.database.current_category_sync_for_provider(
+                    message.account_id, message.provider_id
+                )
                 sync = self.provider.sync_category(
-                    message.provider_id, destination, message.mailbox
+                    message.provider_id, destination, message.mailbox, previous
                 )
             local_id, draft = self.database.save_result(message, classification, reply)
             if destination is not None:
-                if sync is not None:
+                if sync is not None and sync.source_moved:
                     self.database.update_provider_location(local_id, sync.provider_id, sync.mailbox)
                 self.database.mark_category_synced(
-                    local_id, self.provider.category_sync_key(destination)
+                    local_id, self.provider.category_sync_key(destination), sync
                 )
             self.database.record_run(
                 local_id,

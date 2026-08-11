@@ -88,9 +88,9 @@ categories:
   agent/reference: Useful information requiring no action.
 ```
 
-The category key is the exact lowercase Gmail label or IMAP folder path. Use `travel` for a top-level destination or `agent/travel` when you want a prefix. `inbox` previews the selected category without changing the mailbox. `process` and `monitor` apply it automatically: Gmail uses a label, while IMAP creates the folder hierarchy and copies the message without removing the Inbox copy.
+The category key is the exact lowercase Gmail label or IMAP folder path. Use `travel` for a top-level destination or `agent/travel` when you want a prefix. `inbox` previews the selected category without changing the mailbox. `process` and `monitor` apply it automatically: Gmail uses a label, while IMAP creates the folder hierarchy and copies the message without removing the Inbox copy. Reclassification replaces the previous agent-managed label or folder copy; unrelated labels and the original Inbox message are left alone.
 
-IMAP accounts default to copying messages into category folders. Set `category_action: move` on the account to remove categorized messages from Inbox instead. Move mode requires the server's `MOVE` and `UIDPLUS` capabilities; the agent will refuse to emulate a move with unsafe copy/delete/expunge operations. Gmail accounts must omit this setting because labels do not copy messages.
+IMAP accounts default to copying messages into category folders. Safe replacement requires the server's standard `UIDPLUS` support so the agent can track the copied message. Set `category_action: move` on the account to remove categorized messages from Inbox instead; move mode additionally requires the server's `MOVE` capability. The agent will refuse unsafe fallback behavior. Gmail accounts must omit this setting because labels do not copy messages.
 
 Messages that do not clearly fit a configured category remain `Uncategorized`. They still receive a priority, summary, reply recommendation, and attention state, but no Gmail label or IMAP folder is applied. `organize` reports them separately rather than treating them as failures.
 

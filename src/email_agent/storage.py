@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from email_agent.mail.base import CategorySyncResult, CategorySyncState
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
 
 
@@ -65,7 +66,9 @@ class Database:
                 );
                 CREATE TABLE IF NOT EXISTS category_syncs (
                     id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL,
-                    destination TEXT NOT NULL, synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    destination TEXT NOT NULL, provider_uid TEXT, provider_mailbox TEXT,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(message_id, destination),
                     FOREIGN KEY(message_id) REFERENCES messages(id)
                 );
@@ -91,6 +94,17 @@ class Database:
             if "provider_uid" not in columns:
                 db.execute("ALTER TABLE messages ADD COLUMN provider_uid TEXT")
                 db.execute("UPDATE messages SET provider_uid=provider_message_id")
+            sync_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(category_syncs)")
+            }
+            if "provider_uid" not in sync_columns:
+                db.execute("ALTER TABLE category_syncs ADD COLUMN provider_uid TEXT")
+            if "provider_mailbox" not in sync_columns:
+                db.execute("ALTER TABLE category_syncs ADD COLUMN provider_mailbox TEXT")
+            if "active" not in sync_columns:
+                db.execute(
+                    "ALTER TABLE category_syncs ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+                )
             run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
             if "profile_id" in run_columns and "account_id" not in run_columns:
                 db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_id TO account_id")
@@ -381,20 +395,76 @@ class Database:
             ).fetchall()
 
     def category_was_synced(self, message_id: int, destination: str) -> bool:
-        """Return whether this exact provider organization action already succeeded."""
+        """Return whether this is the message's current managed category."""
         with self.connect() as db:
             row = db.execute(
-                "SELECT 1 FROM category_syncs WHERE message_id=? AND destination=?",
+                "SELECT 1 FROM category_syncs WHERE message_id=? AND destination=? AND active=1",
                 (message_id, destination),
             ).fetchone()
         return bool(row)
 
-    def mark_category_synced(self, message_id: int, destination: str) -> None:
-        """Record a successful category sync for idempotent future runs."""
+    def current_category_sync(self, message_id: int) -> CategorySyncState | None:
+        """Return the most recently active managed category and provider location."""
         with self.connect() as db:
+            row = db.execute(
+                """SELECT destination, provider_uid AS provider_id,
+                          provider_mailbox AS mailbox
+                   FROM category_syncs WHERE message_id=? AND active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (message_id,),
+            ).fetchone()
+        if not row:
+            return None
+        values = dict(row)
+        values["destination"] = values["destination"].removeprefix("move:")
+        return CategorySyncState(**values)
+
+    def current_category_sync_for_provider(
+        self, account_id: str, provider_message_id: str
+    ) -> CategorySyncState | None:
+        """Return active category state using a provider's stable message identity."""
+        with self.connect() as db:
+            row = db.execute(
+                """SELECT s.destination, s.provider_uid AS provider_id,
+                          s.provider_mailbox AS mailbox
+                   FROM category_syncs AS s
+                   JOIN messages AS m ON m.id=s.message_id
+                   WHERE m.account_id=? AND m.provider_message_id=? AND s.active=1
+                   ORDER BY s.id DESC LIMIT 1""",
+                (account_id, provider_message_id),
+            ).fetchone()
+        if not row:
+            return None
+        values = dict(row)
+        values["destination"] = values["destination"].removeprefix("move:")
+        return CategorySyncState(**values)
+
+    def mark_category_synced(
+        self,
+        message_id: int,
+        destination: str | None,
+        result: CategorySyncResult | None = None,
+    ) -> None:
+        """Make ``destination`` the sole active managed category for a message."""
+        with self.connect() as db:
+            db.execute("UPDATE category_syncs SET active=0 WHERE message_id=?", (message_id,))
+            if destination is None:
+                return
             db.execute(
-                "INSERT OR IGNORE INTO category_syncs(message_id,destination) VALUES(?,?)",
-                (message_id, destination),
+                """INSERT INTO category_syncs(
+                       message_id, destination, provider_uid, provider_mailbox, active
+                   ) VALUES(?,?,?,?,1)
+                   ON CONFLICT(message_id,destination) DO UPDATE SET
+                       provider_uid=excluded.provider_uid,
+                       provider_mailbox=excluded.provider_mailbox,
+                       active=1,
+                       synced_at=CURRENT_TIMESTAMP""",
+                (
+                    message_id,
+                    destination,
+                    result.provider_id if result else None,
+                    result.mailbox if result else None,
+                ),
             )
 
     def update_provider_location(self, message_id: int, provider_id: str, mailbox: str) -> None:

@@ -9,7 +9,7 @@ from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 from email_agent.config import AccountConfig
-from email_agent.mail.base import CategorySyncResult
+from email_agent.mail.base import CategorySyncResult, CategorySyncState
 from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
 
@@ -122,9 +122,19 @@ class ImapProvider:
         return f'"{value.replace(chr(92), chr(92) * 2).replace(chr(34), chr(92) + chr(34))}"'
 
     def sync_category(
-        self, message_id: str, destination: str, source_mailbox: str = "INBOX"
+        self,
+        message_id: str,
+        destination: str | None,
+        source_mailbox: str = "INBOX",
+        previous: CategorySyncState | None = None,
     ) -> CategorySyncResult | None:
-        """Create a category folder and safely copy or move a message into it."""
+        """Replace the previous managed folder copy or move with ``destination``."""
+        action = self.config.category_action or "copy"
+        if destination is None:
+            if action == "copy":
+                self._delete_previous_copy(previous)
+                return None
+            destination = "INBOX"
         client = self._connect(source_mailbox)
         try:
             delimiter = self._folder_delimiter(client)
@@ -135,11 +145,13 @@ class ImapProvider:
                 for depth in range(1, len(parts)):
                     self._ensure_folder(client, delimiter.join(parts[:depth]))
             self._ensure_folder(client, provider_name)
-            if (self.config.category_action or "copy") == "copy":
+            if action == "copy":
                 status, _ = client.uid("copy", message_id, mailbox)
                 if status != "OK":
                     raise RuntimeError(f"Could not copy message to IMAP folder: {destination}")
-                return None
+                destination_uid = self._copy_uid(client)
+                self._delete_previous_copy(previous)
+                return CategorySyncResult(destination_uid, provider_name, source_moved=False)
             capabilities = self._capabilities(client)
             missing = {"MOVE", "UIDPLUS"} - capabilities
             if missing:
@@ -150,14 +162,35 @@ class ImapProvider:
             status, _ = client.uid("move", message_id, mailbox)
             if status != "OK":
                 raise RuntimeError(f"Could not move message to IMAP folder: {destination}")
-            response, data = client.response("COPYUID")
-            if response != "COPYUID" or not data or not data[0]:
-                raise RuntimeError("IMAP server moved the message without returning its new UID")
-            copy_uid = data[0].decode() if isinstance(data[0], bytes) else data[0]
-            destination_uid = copy_uid.split()[-1]
-            if not destination_uid.isdigit():
-                raise RuntimeError("IMAP server returned an invalid destination UID")
+            destination_uid = self._copy_uid(client)
             return CategorySyncResult(provider_id=destination_uid, mailbox=provider_name)
+        finally:
+            client.logout()
+
+    @staticmethod
+    def _copy_uid(client) -> str:
+        """Return the destination UID reported by a UIDPLUS COPY or MOVE."""
+        response, data = client.response("COPYUID")
+        if response != "COPYUID" or not data or not data[0]:
+            raise RuntimeError("IMAP category sync requires server UIDPLUS support (COPYUID)")
+        copy_uid = data[0].decode() if isinstance(data[0], bytes) else data[0]
+        destination_uid = copy_uid.split()[-1]
+        if not destination_uid.isdigit():
+            raise RuntimeError("IMAP server returned an invalid destination UID")
+        return destination_uid
+
+    def _delete_previous_copy(self, previous: CategorySyncState | None) -> None:
+        """Delete only a previously tracked managed copy, leaving the Inbox original intact."""
+        if not previous or not previous.provider_id or not previous.mailbox:
+            return
+        client = self._connect(previous.mailbox)
+        try:
+            status, _ = client.uid("store", previous.provider_id, "+FLAGS.SILENT", "(\\Deleted)")
+            if status != "OK":
+                raise RuntimeError("Could not remove the previous IMAP category copy")
+            status, _ = client.uid("expunge", previous.provider_id)
+            if status != "OK":
+                raise RuntimeError("Could not expunge the previous IMAP category copy")
         finally:
             client.logout()
 

@@ -6,10 +6,20 @@ from email_agent.models import Draft, EmailMessage, EmailThread
 
 @dataclass(frozen=True)
 class CategorySyncResult:
-    """A new provider location assigned by a category move."""
+    """Provider location created by category synchronization."""
 
     provider_id: str
     mailbox: str
+    source_moved: bool = True
+
+
+@dataclass(frozen=True)
+class CategorySyncState:
+    """The currently active provider-managed category for a local message."""
+
+    destination: str
+    provider_id: str | None = None
+    mailbox: str | None = None
 
 
 class MailProvider(Protocol):
@@ -21,6 +31,10 @@ class MailProvider(Protocol):
     def create_draft(self, message_id: str, body: str) -> Draft: ...
     def mark_processed(self, message_id: str) -> None: ...
     def sync_category(
-        self, message_id: str, destination: str, source_mailbox: str = "INBOX"
+        self,
+        message_id: str,
+        destination: str | None,
+        source_mailbox: str = "INBOX",
+        previous: CategorySyncState | None = None,
     ) -> CategorySyncResult | None: ...
     def category_sync_key(self, destination: str) -> str: ...

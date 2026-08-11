@@ -3,6 +3,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 from email_agent.config import AccountConfig
+from email_agent.mail.base import CategorySyncState
 from email_agent.mail.gmail import GmailProvider
 from email_agent.mail.imap import ImapProvider
 
@@ -90,6 +91,10 @@ class FakeImapClient:
         self.copied.append((command, message_id, mailbox))
         return "OK", []
 
+    def response(self, code):
+        assert code == "COPYUID"
+        return "COPYUID", [b"12345 42 99"]
+
     def logout(self):
         self.logged_out = True
 
@@ -107,12 +112,57 @@ def test_imap_category_sync_creates_folder_and_copies_message(monkeypatch):
     client = FakeImapClient()
     monkeypatch.setattr(provider, "_connect", lambda mailbox="INBOX": client)
 
-    provider.sync_category("42", "Email Agent/Action")
+    result = provider.sync_category("42", "Email Agent/Action")
 
     assert client.created == ['"Email Agent"', '"Email Agent.Action"']
     assert client.copied == [("copy", "42", '"Email Agent.Action"')]
     assert client.logged_out is True
     assert client.list_calls == 1
+    assert result.provider_id == "99"
+    assert result.mailbox == "Email Agent.Action"
+    assert result.source_moved is False
+
+
+def test_imap_category_copy_replaces_tracked_previous_copy(monkeypatch):
+    provider = ImapProvider(
+        "support",
+        account(
+            "imap",
+            username_env="USER_ENV",
+            password_env="PASSWORD_ENV",
+            imap_host="imap.example.com",
+        ),
+    )
+    source = FakeImapClient()
+
+    class CleanupClient:
+        def __init__(self):
+            self.calls = []
+            self.logged_out = False
+
+        def uid(self, *args):
+            self.calls.append(args)
+            return "OK", []
+
+        def logout(self):
+            self.logged_out = True
+
+    cleanup = CleanupClient()
+    monkeypatch.setattr(
+        provider, "_connect", lambda mailbox="INBOX": cleanup if mailbox == "old" else source
+    )
+
+    provider.sync_category(
+        "42",
+        "new",
+        previous=CategorySyncState("old", provider_id="17", mailbox="old"),
+    )
+
+    assert cleanup.calls == [
+        ("store", "17", "+FLAGS.SILENT", "(\\Deleted)"),
+        ("expunge", "17"),
+    ]
+    assert cleanup.logged_out is True
 
 
 class FakeMoveImapClient(FakeImapClient):
@@ -218,6 +268,36 @@ def test_gmail_category_sync_creates_missing_label(tmp_path, monkeypatch):
     assert service.calls[0][0] == "create"
     assert service.calls[0][1]["body"]["name"] == "Email Agent/Receipts"
     assert service.calls[1][1]["body"] == {"addLabelIds": ["new-label"]}
+
+
+def test_gmail_category_sync_replaces_only_previous_managed_label(tmp_path, monkeypatch):
+    provider = GmailProvider("personal", account("gmail"), tmp_path)
+    service = FakeGmailService(
+        [
+            {"id": "old-label", "name": "action"},
+            {"id": "new-label", "name": "travel"},
+            {"id": "user-label", "name": "family"},
+        ]
+    )
+    monkeypatch.setattr(provider, "_client", lambda: service)
+
+    provider.sync_category(
+        "gmail-message", "travel", previous=CategorySyncState(destination="action")
+    )
+
+    assert service.calls == [
+        (
+            "modify",
+            {
+                "userId": "me",
+                "id": "gmail-message",
+                "body": {
+                    "addLabelIds": ["new-label"],
+                    "removeLabelIds": ["old-label"],
+                },
+            },
+        )
+    ]
 
 
 def test_gmail_rejects_old_read_only_token_with_reauthorization_help(tmp_path):

@@ -323,6 +323,27 @@ def organize(
             if not dry_run:
                 database.update_classification(row["id"], classification)
         if destination is None:
+            previous = database.current_category_sync(row["id"])
+            if should_reclassify and previous is not None:
+                if dry_run:
+                    changed += 1
+                    _message_id(row["id"])
+                    typer.echo(f"  {row['subject']} → ", nl=False)
+                    typer.secho("uncategorized", fg=typer.colors.MAGENTA, bold=True)
+                    continue
+                try:
+                    provider.sync_category(
+                        row["provider_uid"], None, row["provider_mailbox"], previous
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
+                    continue
+                database.mark_category_synced(row["id"], None)
+                changed += 1
+                _message_id(row["id"])
+                typer.secho("  ✓ uncategorized", fg=typer.colors.GREEN, bold=True)
+                continue
             uncategorized += 1
             typer.secho(f"{row['id']}: uncategorized", fg=typer.colors.BRIGHT_BLACK)
             continue
@@ -337,14 +358,17 @@ def organize(
             typer.secho(destination, fg=typer.colors.MAGENTA, bold=True)
             continue
         try:
-            sync = provider.sync_category(row["provider_uid"], destination, row["provider_mailbox"])
+            previous = database.current_category_sync(row["id"])
+            sync = provider.sync_category(
+                row["provider_uid"], destination, row["provider_mailbox"], previous
+            )
         except Exception as exc:  # noqa: BLE001 - one provider failure must not stop the batch
             failed += 1
             typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
             continue
-        if sync is not None:
+        if sync is not None and sync.source_moved:
             database.update_provider_location(row["id"], sync.provider_id, sync.mailbox)
-        database.mark_category_synced(row["id"], sync_key)
+        database.mark_category_synced(row["id"], sync_key, sync)
         changed += 1
         _message_id(row["id"])
         typer.secho(f"  ✓ {destination}", fg=typer.colors.GREEN, bold=True)

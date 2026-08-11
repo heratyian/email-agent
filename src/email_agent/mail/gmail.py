@@ -6,6 +6,7 @@ from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from pathlib import Path
 
 from email_agent.config import AccountConfig
+from email_agent.mail.base import CategorySyncState
 from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
 
@@ -149,33 +150,54 @@ class GmailProvider:
         return None
 
     def sync_category(
-        self, message_id: str, destination: str, source_mailbox: str = "INBOX"
+        self,
+        message_id: str,
+        destination: str | None,
+        source_mailbox: str = "INBOX",
+        previous: CategorySyncState | None = None,
     ) -> None:
-        """Create a user label when needed and idempotently apply it to a message."""
+        """Replace the previous agent-managed label without touching other labels."""
         service = self._client()
         labels = service.users().labels().list(userId="me").execute().get("labels", [])
-        label = next(
-            (item for item in labels if item.get("name", "").casefold() == destination.casefold()),
-            None,
-        )
-        if label is None:
-            label = (
-                service.users()
-                .labels()
-                .create(
-                    userId="me",
-                    body={
-                        "name": destination,
-                        "labelListVisibility": "labelShow",
-                        "messageListVisibility": "show",
-                    },
+        by_name = {item.get("name", "").casefold(): item for item in labels}
+        add_ids = []
+        if destination is not None:
+            label = by_name.get(destination.casefold())
+            if label is None:
+                label = (
+                    service.users()
+                    .labels()
+                    .create(
+                        userId="me",
+                        body={
+                            "name": destination,
+                            "labelListVisibility": "labelShow",
+                            "messageListVisibility": "show",
+                        },
+                    )
+                    .execute()
                 )
-                .execute()
-            )
+            add_ids.append(label["id"])
+        remove_ids = []
+        if previous and previous.destination != destination:
+            old_label = by_name.get(previous.destination.casefold())
+            if old_label is not None:
+                remove_ids.append(old_label["id"])
+        if not add_ids and not remove_ids:
+            return
+        body = {}
+        if add_ids:
+            body["addLabelIds"] = add_ids
+        if remove_ids:
+            body["removeLabelIds"] = remove_ids
         (
             service.users()
             .messages()
-            .modify(userId="me", id=message_id, body={"addLabelIds": [label["id"]]})
+            .modify(
+                userId="me",
+                id=message_id,
+                body=body,
+            )
             .execute()
         )
 

@@ -31,7 +31,7 @@ class FakeProvider:
     def mark_processed(self, message_id):
         pass
 
-    def sync_category(self, message_id, destination, source_mailbox="INBOX"):
+    def sync_category(self, message_id, destination, source_mailbox="INBOX", previous=None):
         self.synced.append((message_id, destination))
 
     @staticmethod
@@ -65,8 +65,8 @@ class FakeAgents:
 
 
 class FakeMoveProvider(FakeProvider):
-    def sync_category(self, message_id, destination, source_mailbox="INBOX"):
-        super().sync_category(message_id, destination, source_mailbox)
+    def sync_category(self, message_id, destination, source_mailbox="INBOX", previous=None):
+        super().sync_category(message_id, destination, source_mailbox, previous)
         return CategorySyncResult(provider_id="900", mailbox="action")
 
 
@@ -261,6 +261,14 @@ def test_category_sync_audit_is_idempotent(tmp_path):
     db.mark_category_synced(local_id, "Email Agent/Action")
     db.mark_category_synced(local_id, "Email Agent/Action")
     assert db.category_was_synced(local_id, "Email Agent/Action") is True
+    db.mark_category_synced(
+        local_id,
+        "Email Agent/Travel",
+        CategorySyncResult("99", "Email Agent/Travel", source_moved=False),
+    )
+    assert db.category_was_synced(local_id, "Email Agent/Action") is False
+    assert db.current_category_sync(local_id).destination == "Email Agent/Travel"
+    assert db.current_category_sync(local_id).provider_id == "99"
     assert len(db.list_categorized_messages("support@example.com")) == 1
 
     db.set_attention(local_id, "done")
