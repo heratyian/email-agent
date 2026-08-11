@@ -4,38 +4,17 @@ model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
-prompts:
-  version: 1
-  system: "{{PROMPT_DIR}}/system.md"
-  classify: "{{PROMPT_DIR}}/classify.md"
-  reply: "{{PROMPT_DIR}}/reply.md"
-behavior:
-  default_tone: friendly, clear, and concise
-  max_reply_words: 150
-  intents:
-    - bug_report
-    - billing_question
-    - feature_request
-    - how_to
-    - account_problem
-    - login_problem
-    - refund_request
-    - sales_question
-    - spam
-    - unknown
-  escalation_rules:
-    - billing dispute
-    - refund request
-    - security issue
-    - legal complaint
-    - data deletion request
-    - angry customer
-    - unknown product behavior
-  ignored_rules:
-    - spam
-    - newsletters
-    - automated receipts
-  company_context: Replace this with accurate company and product context.
+system_prompt: "{{PROMPT_DIR}}/system.md"
+categories:
+  action: A customer request that needs a reply or team action.
+  important: Security, legal, billing, or escalated customer communication.
+  receipts: Invoices, payments, and transaction confirmations.
+  newsletters: Subscriptions, product announcements, and recurring publications.
+  reference: Useful customer or product information requiring no action.
+  noise: Spam or irrelevant automated mail.
+organization:
+  enabled: true
+  prefix: Email Agent
 safety:
   allow_drafts: true
   allow_send: false

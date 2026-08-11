@@ -14,7 +14,7 @@ runner = CliRunner()
 
 
 @pytest.mark.parametrize("template", list(AgentTemplate))
-def test_generates_account_with_nested_agent_and_prompts(tmp_path, template):
+def test_generates_account_with_nested_agent_and_system_prompt(tmp_path, template):
     result = generate_account(
         tmp_path,
         "person@example.com",
@@ -26,8 +26,8 @@ def test_generates_account_with_nested_agent_and_prompts(tmp_path, template):
     account = yaml.safe_load(result.path.read_text())["accounts"]["person@example.com"]
     assert account["email"] == "person@example.com"
     assert account["agent"]["model"]["model"] == "test-model"
-    assert account["agent"]["prompts"]["system"].startswith("prompts/person-example-com/")
-    assert all(path.is_file() for path in result.prompts)
+    assert account["agent"]["system_prompt"].startswith("prompts/person-example-com/")
+    assert result.system_prompt.is_file()
 
 
 def test_generates_imap_credentials_as_environment_references(tmp_path):
@@ -91,8 +91,15 @@ def test_inbox_help_uses_account_and_attention_views():
     assert all(option in result.output for option in ("--snoozed", "--done", "--all"))
 
 
-@pytest.mark.parametrize("command", ["done", "snooze", "reopen"])
+@pytest.mark.parametrize("command", ["done", "snooze", "reopen", "organize"])
 def test_attention_commands_are_in_top_level_help(command):
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert command in result.output
+
+
+def test_organize_help_includes_reclassification_options():
+    result = runner.invoke(app, ["organize", "--help"])
+    assert result.exit_code == 0
+    assert "--reclassify-unknown" in result.output
+    assert "--reclassify-all" in result.output

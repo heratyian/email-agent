@@ -17,10 +17,7 @@ accounts:
     agent:
       name: Personal Agent
       model: {provider: openai, model: test-model}
-      prompts:
-        system: prompts/person/system.md
-        classify: prompts/person/classify.md
-        reply: prompts/person/reply.md
+      system_prompt: prompts/person/system.md
       safety: {allow_drafts: true, allow_send: false}
 """
     )
@@ -32,6 +29,23 @@ def test_account_contains_valid_draft_only_agent(tmp_path):
     account = settings.account("person@example.com")
     assert account.email == "person@example.com"
     assert account.agent.safety.allow_send is False
+    assert account.agent.organization.enabled is True
+    assert account.agent.categories["action"].startswith("Requires")
+
+
+def test_category_shorthand_and_provider_names_are_validated(tmp_path):
+    write_account_config(tmp_path)
+    raw = (tmp_path / "accounts.yaml").read_text()
+    (tmp_path / "accounts.yaml").write_text(
+        raw.replace(
+            "      safety:",
+            "      categories:\n        follow_up: Needs my response.\n"
+            "      organization: {enabled: true, prefix: Assistant}\n      safety:",
+        )
+    )
+    agent = Settings(tmp_path).account("person@example.com").agent
+    assert agent.categories["follow_up"] == "Needs my response."
+    assert agent.organization.prefix == "Assistant"
 
 
 def test_unknown_account_is_rejected(tmp_path):

@@ -6,6 +6,27 @@ from time import perf_counter
 
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
 
+LEGACY_CATEGORY_MAP = {
+    "needs_reply": "action",
+    "support_request": "action",
+    "urgent": "important",
+    "newsletter": "newsletters",
+    "spam": "noise",
+    "automated": "reference",
+    "informational": "reference",
+    "unknown": "important",
+}
+
+
+def category_destination(agent, classification: EmailClassification) -> str:
+    """Return the provider-neutral label/folder path for a configured category."""
+    key = classification.category
+    if key not in agent.categories:
+        key = LEGACY_CATEGORY_MAP.get(key, key)
+    if key not in agent.categories:
+        raise KeyError(f"unknown category {classification.category!r}")
+    return f"{agent.organization.prefix}/{key}".lower()
+
 
 @dataclass
 class ProcessedEmail:
@@ -117,10 +138,12 @@ class EmailPipeline:
             reply = None
             if classification.requires_reply and self.agent.safety.allow_drafts:
                 reply = self.agents.draft(message, thread, classification)
-                words = reply.body.split()
-                if len(words) > self.agent.behavior.max_reply_words:
-                    reply.body = " ".join(words[: self.agent.behavior.max_reply_words])
+            if self.agent.organization.enabled:
+                destination = category_destination(self.agent, classification)
+                self.provider.sync_category(message.provider_id, destination)
             local_id, draft = self.database.save_result(message, classification, reply)
+            if self.agent.organization.enabled:
+                self.database.mark_category_synced(local_id, destination)
             self.database.record_run(
                 local_id,
                 self.account_id,

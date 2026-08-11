@@ -4,22 +4,17 @@ model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
-prompts:
-  version: 1
-  system: "{{PROMPT_DIR}}/system.md"
-  classify: "{{PROMPT_DIR}}/classify.md"
-  reply: "{{PROMPT_DIR}}/reply.md"
-behavior:
-  default_tone: warm and concise
-  max_reply_words: 120
-  escalation_rules:
-    - financial commitments
-    - legal matters
-    - sensitive personal information
-  ignored_rules:
-    - spam
-    - newsletters
-    - automated receipts
+system_prompt: "{{PROMPT_DIR}}/system.md"
+categories:
+  action: Requires a reply, decision, or other action from me.
+  important: Important information that deserves my attention.
+  receipts: Purchases, invoices, and payment confirmations.
+  newsletters: Subscriptions and recurring publications.
+  reference: Useful information requiring no action.
+  noise: Spam or low-value automated mail.
+organization:
+  enabled: true
+  prefix: Email Agent
 safety:
   allow_drafts: true
   allow_send: false

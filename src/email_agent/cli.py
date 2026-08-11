@@ -12,10 +12,12 @@ from email_agent.agents import EmailAgents
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.llm import get_model
 from email_agent.mail import create_mail_provider
+from email_agent.models import EmailClassification
 from email_agent.pipeline import (
     PRIORITY_GROUP_ORDER,
     EmailPipeline,
     PriorityGroup,
+    category_destination,
     triage_inbox,
 )
 from email_agent.scaffolding import (
@@ -79,7 +81,7 @@ def accounts():
 def init_account(
     email: Annotated[str, typer.Argument(help="Mailbox email address.")],
     provider: Annotated[AccountProvider, typer.Option(help="Mailbox provider.")],
-    template: Annotated[AgentTemplate, typer.Option(help="Agent behavior template.")],
+    template: Annotated[AgentTemplate, typer.Option(help="Agent system-prompt template.")],
     model_provider: Annotated[ModelProvider, typer.Option(help="Model provider.")],
     model: Annotated[str, typer.Option(help="Model name, such as 'gpt-5.4-mini' or 'qwen3'.")],
     display_name: Annotated[str | None, typer.Option(help="Human-readable agent name.")] = None,
@@ -133,19 +135,18 @@ def init_account(
         typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
     else:
         typer.echo("Set the generated username and password environment variables in .env.")
-    typer.secho(f"Created prompts: {generated.prompts[0].parent.relative_to(PROJECT_ROOT)}/")
+    typer.secho(f"Created system prompt: {generated.system_prompt.relative_to(PROJECT_ROOT)}")
     typer.echo(f"\nNext: email-agent inbox --account {email}")
 
 
 @config_app.command("validate")
 def validate_config():
-    """Validate accounts, nested agents, prompts, and draft-only safety."""
+    """Validate accounts, nested agents, system prompts, and draft-only safety."""
     settings = Settings()
     for account_id, account in settings.accounts.items():
         agent = account.agent
-        for prompt in (agent.prompts.system, agent.prompts.classify, agent.prompts.reply):
-            if not (settings.root / prompt).is_file():
-                raise typer.BadParameter(f"Missing prompt: {prompt}")
+        if not (settings.root / agent.system_prompt).is_file():
+            raise typer.BadParameter(f"Missing system prompt: {agent.system_prompt}")
         typer.secho(f"✓ {account_id} ({agent.name}) v{agent.version}", fg=typer.colors.GREEN)
     typer.secho(
         f"Validated {len(settings.accounts)} accounts; sending is disabled.",
@@ -237,6 +238,114 @@ def process(account: Annotated[str, typer.Option(help="Mailbox email address.")]
     typer.echo(f"Found {len(results)} new messages.")
     for result in results:
         _render(result)
+
+
+@app.command()
+def organize(
+    account: Annotated[str, typer.Option(help="Mailbox email address.")],
+    limit: Annotated[int, typer.Option(help="Maximum recent local messages to examine.")] = 100,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Preview changes without modifying the mailbox.")
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Repeat previously successful syncs; may duplicate IMAP messages.",
+        ),
+    ] = False,
+    reclassify_unknown: Annotated[
+        bool,
+        typer.Option(
+            "--reclassify-unknown",
+            help="Reclassify stored categories that no longer exist in the configuration.",
+        ),
+    ] = False,
+    reclassify_all: Annotated[
+        bool,
+        typer.Option(
+            "--reclassify-all",
+            help="Reclassify every examined message using the current categories.",
+        ),
+    ] = False,
+):
+    """Apply existing local categories as Gmail labels or IMAP folders."""
+    if limit < 1:
+        raise typer.BadParameter("limit must be at least 1")
+    if reclassify_unknown and reclassify_all:
+        raise typer.BadParameter("Use only one reclassification option")
+    should_reclassify = reclassify_unknown or reclassify_all
+    _, configured, provider, database, agents = _components(account, with_agents=should_reclassify)
+    if not configured.agent.organization.enabled:
+        raise typer.BadParameter("organization is disabled for this account")
+
+    rows = database.list_categorized_messages(account, limit)
+    changed = skipped = failed = 0
+    typer.secho(f"Organizing {configured.email}...", fg=typer.colors.CYAN, bold=True)
+    if dry_run:
+        typer.secho("DRY RUN — no mailbox changes will be made", fg=typer.colors.YELLOW)
+    for row in rows:
+        classification = EmailClassification.model_validate_json(row["classification"])
+        try:
+            destination = category_destination(configured.agent, classification)
+        except KeyError as exc:
+            if reclassify_unknown:
+                destination = None
+            else:
+                failed += 1
+                typer.secho(f"{row['id']}: {exc.args[0]}", fg=typer.colors.BRIGHT_RED)
+                continue
+        if reclassify_all or (reclassify_unknown and destination is None):
+            try:
+                message = provider.get_message(row["provider_message_id"])
+                thread = provider.get_thread(row["provider_message_id"])
+                classification = agents.classify(message, thread)
+                destination = category_destination(configured.agent, classification)
+            except Exception as exc:  # noqa: BLE001 - continue the remaining batch
+                failed += 1
+                typer.secho(f"{row['id']}: reclassification failed: {exc}", fg=typer.colors.RED)
+                continue
+            typer.secho(
+                f"{row['id']}: reclassified as {classification.category}",
+                fg=typer.colors.YELLOW,
+            )
+            if not dry_run:
+                database.update_classification(row["id"], classification)
+        if destination is None:
+            failed += 1
+            typer.secho(f"{row['id']}: no category destination", fg=typer.colors.RED)
+            continue
+        if not force and database.category_was_synced(row["id"], destination):
+            skipped += 1
+            continue
+        if dry_run:
+            changed += 1
+            _message_id(row["id"])
+            typer.echo(f"  {row['subject']} → ", nl=False)
+            typer.secho(destination, fg=typer.colors.MAGENTA, bold=True)
+            continue
+        try:
+            provider.sync_category(row["provider_message_id"], destination)
+        except Exception as exc:  # noqa: BLE001 - one provider failure must not stop the batch
+            failed += 1
+            typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
+            continue
+        database.mark_category_synced(row["id"], destination)
+        changed += 1
+        _message_id(row["id"])
+        typer.secho(f"  ✓ {destination}", fg=typer.colors.GREEN, bold=True)
+
+    action = "would sync" if dry_run else "synced"
+    typer.echo()
+    typer.secho(f"{changed} {action}", fg=typer.colors.GREEN, bold=True, nl=False)
+    typer.echo(", ", nl=False)
+    typer.secho(f"{skipped} already synced", fg=typer.colors.BRIGHT_BLACK, nl=False)
+    typer.echo(", ", nl=False)
+    typer.secho(
+        f"{failed} failed.",
+        fg=typer.colors.RED if failed else typer.colors.BRIGHT_BLACK,
+        bold=bool(failed),
+    )
 
 
 @app.command()

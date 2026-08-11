@@ -36,16 +36,7 @@ class EmailThread(BaseModel):
 class EmailClassification(BaseModel):
     """Validated triage decision produced by the classification agent."""
 
-    category: Literal[
-        "spam",
-        "newsletter",
-        "automated",
-        "informational",
-        "needs_reply",
-        "support_request",
-        "urgent",
-        "unknown",
-    ]
+    category: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     requires_reply: bool
     priority: Literal["low", "normal", "high", "urgent"]
     intent: str | None = None

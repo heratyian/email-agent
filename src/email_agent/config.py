@@ -6,7 +6,7 @@ from typing import Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,22 +20,6 @@ class ModelConfig(BaseModel):
     base_url: str | None = None
 
 
-class PromptConfig(BaseModel):
-    version: int = 1
-    system: str
-    classify: str
-    reply: str
-
-
-class BehaviorConfig(BaseModel):
-    default_tone: str = "friendly"
-    max_reply_words: int = 150
-    intents: list[str] = Field(default_factory=list)
-    escalation_rules: list[str] = Field(default_factory=list)
-    ignored_rules: list[str] = Field(default_factory=list)
-    company_context: str = ""
-
-
 class SafetyConfig(BaseModel):
     allow_drafts: bool = True
     allow_send: bool = False
@@ -47,19 +31,58 @@ class SafetyConfig(BaseModel):
         return self
 
 
+def _default_categories() -> dict[str, str]:
+    return {
+        "action": "Requires a reply, decision, or other action.",
+        "important": "Important information that deserves attention.",
+        "receipts": "Purchases, invoices, and payment confirmations.",
+        "newsletters": "Subscriptions and recurring publications.",
+        "reference": "Useful information requiring no action.",
+        "noise": "Spam or low-value automated mail.",
+    }
+
+
+class OrganizationConfig(BaseModel):
+    """Optional synchronization of categories to provider labels or folders."""
+
+    enabled: bool = True
+    prefix: str = "Email Agent"
+
+    @field_validator("prefix")
+    @classmethod
+    def safe_prefix(cls, value: str) -> str:
+        value = value.strip().strip("/")
+        if not value or any(ord(character) > 127 for character in value):
+            raise ValueError("organization prefix must be non-empty ASCII text")
+        return value
+
+
 class AgentConfig(BaseModel):
-    """Model, prompts, behavior, and safety policy nested under one mailbox account."""
+    """Model, system prompt, categories, organization, and enforced safety policy."""
 
     name: str
     version: int = 1
     model: ModelConfig
-    prompts: PromptConfig
-    behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
+    system_prompt: str
+    categories: dict[str, str] = Field(default_factory=_default_categories)
+    organization: OrganizationConfig = Field(default_factory=OrganizationConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+
+    @field_validator("categories")
+    @classmethod
+    def valid_categories(cls, value: dict[str, str]) -> dict[str, str]:
+        if not value:
+            raise ValueError("categories must be a non-empty mapping")
+        for key, description in value.items():
+            if not key or not key.replace("_", "").isalnum() or not key.isascii():
+                raise ValueError(f"Invalid category key: {key!r}")
+            if not description.strip():
+                raise ValueError(f"Category {key!r} must have a description")
+        return value
 
 
 class AccountConfig(BaseModel):
-    """One mailbox connection and its default agent behavior."""
+    """One mailbox connection and its email assistant configuration."""
 
     provider: Literal["gmail", "imap"]
     email: str

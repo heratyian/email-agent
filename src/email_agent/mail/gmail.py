@@ -9,11 +9,11 @@ from email_agent.config import AccountConfig
 from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 class GmailProvider:
-    """Read-only Gmail API adapter using an installed-app OAuth flow."""
+    """Gmail adapter that reads mail and synchronizes agent categories as labels."""
 
     def __init__(self, account_id: str, config: AccountConfig, root: Path):
         self.account_id, self.config, self.root = account_id, config, root
@@ -37,7 +37,12 @@ class GmailProvider:
         )
         credentials = None
         if token_path.exists():
-            credentials = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+            credentials = Credentials.from_authorized_user_file(str(token_path))
+            if not credentials.has_scopes(SCOPES):
+                raise RuntimeError(
+                    "Gmail category sync needs gmail.modify permission. Delete or move "
+                    f"{token_path}, then run the command again to authorize the new scope."
+                )
         if not credentials or not credentials.valid:
             if credentials and credentials.expired and credentials.refresh_token:
                 credentials.refresh(Request())
@@ -146,3 +151,32 @@ class GmailProvider:
 
     def mark_processed(self, message_id: str) -> None:
         return None
+
+    def sync_category(self, message_id: str, destination: str) -> None:
+        """Create a user label when needed and idempotently apply it to a message."""
+        service = self._client()
+        labels = service.users().labels().list(userId="me").execute().get("labels", [])
+        label = next(
+            (item for item in labels if item.get("name", "").casefold() == destination.casefold()),
+            None,
+        )
+        if label is None:
+            label = (
+                service.users()
+                .labels()
+                .create(
+                    userId="me",
+                    body={
+                        "name": destination,
+                        "labelListVisibility": "labelShow",
+                        "messageListVisibility": "show",
+                    },
+                )
+                .execute()
+            )
+        (
+            service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"addLabelIds": [label["id"]]})
+            .execute()
+        )

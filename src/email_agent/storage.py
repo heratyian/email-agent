@@ -61,6 +61,12 @@ class Database:
                     model TEXT NOT NULL, latency_ms INTEGER NOT NULL, draft_generated INTEGER NOT NULL,
                     error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS category_syncs (
+                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL,
+                    destination TEXT NOT NULL, synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(message_id, destination),
+                    FOREIGN KEY(message_id) REFERENCES messages(id)
+                );
             """)
             columns = {row["name"] for row in db.execute("PRAGMA table_info(messages)")}
             if "triaged_at" not in columns:
@@ -183,6 +189,15 @@ class Database:
             return None
         return row["id"], EmailClassification.model_validate_json(row["payload"])
 
+    def update_classification(self, message_id: int, classification: EmailClassification) -> bool:
+        """Replace a stored classification without changing attention state."""
+        with self.connect() as db:
+            cursor = db.execute(
+                "UPDATE classifications SET payload=? WHERE message_id=?",
+                (classification.model_dump_json(), message_id),
+            )
+        return cursor.rowcount > 0
+
     @staticmethod
     def recommended_attention(classification: EmailClassification) -> str:
         """Translate an agent recommendation into the simple user-facing workflow."""
@@ -252,7 +267,7 @@ class Database:
                     message_id,
                     account_id,
                     agent.version,
-                    agent.prompts.version,
+                    agent.version,
                     f"{agent.model.provider}:{agent.model.model}",
                     latency_ms,
                     drafted,
@@ -336,6 +351,38 @@ class Database:
                 (message_id,),
             ).fetchone()
         return bool(row)
+
+    def list_categorized_messages(self, account_id: str, limit: int = 100) -> list[sqlite3.Row]:
+        """Return recent locally classified messages eligible for provider sync."""
+        with self.connect() as db:
+            return db.execute(
+                """
+                SELECT m.*, c.payload AS classification
+                FROM messages AS m
+                JOIN classifications AS c ON c.message_id=m.id
+                WHERE m.account_id=?
+                ORDER BY m.received_at DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            ).fetchall()
+
+    def category_was_synced(self, message_id: int, destination: str) -> bool:
+        """Return whether this exact provider organization action already succeeded."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM category_syncs WHERE message_id=? AND destination=?",
+                (message_id, destination),
+            ).fetchone()
+        return bool(row)
+
+    def mark_category_synced(self, message_id: int, destination: str) -> None:
+        """Record a successful category sync for idempotent future runs."""
+        with self.connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO category_syncs(message_id,destination) VALUES(?,?)",
+                (message_id, destination),
+            )
 
     def approve(self, message_id: int) -> bool:
         with self.connect() as db:

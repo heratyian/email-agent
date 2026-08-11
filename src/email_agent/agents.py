@@ -31,7 +31,13 @@ class EmailAgents:
         response = self.classifier.invoke(
             {"messages": [{"role": "user", "content": format_thread(thread, message)}]}
         )
-        return EmailClassification.model_validate(response["structured_response"])
+        classification = EmailClassification.model_validate(response["structured_response"])
+        if classification.category not in self.agent.categories:
+            allowed = ", ".join(self.agent.categories)
+            raise ValueError(
+                f"Model returned unknown category {classification.category!r}; expected {allowed}"
+            )
+        return classification
 
     def draft(
         self, message: EmailMessage, thread: EmailThread, classification: EmailClassification

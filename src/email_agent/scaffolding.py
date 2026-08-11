@@ -12,7 +12,7 @@ from email_agent.config import AccountConfig
 
 
 class AgentTemplate(StrEnum):
-    """Built-in agent behavior templates available during account creation."""
+    """Built-in system-prompt templates available during account creation."""
 
     PERSONAL = "personal"
     SUPPORT = "support"
@@ -35,11 +35,11 @@ class ModelProvider(StrEnum):
 
 @dataclass(frozen=True)
 class GeneratedAccount:
-    """Configuration and prompt paths created for one account."""
+    """Configuration and system prompt created for one account."""
 
     path: Path
     account_id: str
-    prompts: tuple[Path, ...]
+    system_prompt: Path
 
 
 def _validate_email(value: str) -> None:
@@ -70,15 +70,13 @@ def generate_account(
     token_file: str | None = None,
     force: bool = False,
 ) -> GeneratedAccount:
-    """Create one email-address account with nested agent behavior and prompts."""
+    """Create one email-address account with a nested agent and system prompt."""
     root = root.resolve()
     _validate_email(email)
     path = root / "accounts.yaml"
     slug = _slug(email)
     prompt_dir = root / "prompts" / slug
-    prompt_paths = tuple(
-        prompt_dir / filename for filename in ("system.md", "classify.md", "reply.md")
-    )
+    system_prompt = prompt_dir / "system.md"
 
     raw = yaml.safe_load(path.read_text()) if path.is_file() else None
     if raw is None:
@@ -87,10 +85,10 @@ def generate_account(
         raise TypeError("accounts.yaml must contain an 'accounts' mapping")
     if email in raw["accounts"] and not force:
         raise FileExistsError(f"Account '{email}' already exists in accounts.yaml")
-    existing_prompts = [prompt for prompt in prompt_paths if prompt.exists()]
-    if existing_prompts and not force:
-        rendered = ", ".join(str(prompt.relative_to(root)) for prompt in existing_prompts)
-        raise FileExistsError(f"Refusing to overwrite existing files: {rendered}")
+    if system_prompt.exists() and not force:
+        raise FileExistsError(
+            f"Refusing to overwrite existing file: {system_prompt.relative_to(root)}"
+        )
 
     template_directory = "customer_support" if template is AgentTemplate.SUPPORT else template.value
     template_root = files("email_agent").joinpath("templates", template_directory)
@@ -134,7 +132,6 @@ def generate_account(
 
     raw["accounts"][email] = account
     prompt_dir.mkdir(parents=True, exist_ok=True)
-    for destination in prompt_paths:
-        destination.write_text(template_root.joinpath(destination.name).read_text())
+    system_prompt.write_text(template_root.joinpath("system.md").read_text())
     path.write_text(yaml.safe_dump(raw, sort_keys=False))
-    return GeneratedAccount(path=path, account_id=email, prompts=prompt_paths)
+    return GeneratedAccount(path=path, account_id=email, system_prompt=system_prompt)
