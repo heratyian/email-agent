@@ -47,8 +47,11 @@ class ProcessingService:
         if limit < 1:
             return []
         results: list[ProcessedEmail | ProcessingFailure] = []
-        for message in self.provider.get_messages(limit, unread_only=False):
+        messages = self.provider.get_messages(limit, unread_only=False)
+        logger.info("Examining %d recent messages for processing", len(messages))
+        for message in messages:
             if self.database.is_processed(message.account_id, message.provider_id):
+                logger.debug("Skipping an already processed message")
                 continue
             started = perf_counter()
             local_id = None
@@ -62,6 +65,12 @@ class ProcessingService:
                     drafted = True
                 destination = category_destination(self.agent, classification)
                 local_id, draft = self.database.save_result(message, classification, reply)
+                logger.info(
+                    "Prepared local message %s: category=%s draft=%s",
+                    local_id,
+                    destination or "uncategorized",
+                    drafted,
+                )
                 sync = None
                 if destination is not None:
                     previous = self.database.current_category_sync(local_id)
@@ -83,6 +92,12 @@ class ProcessingService:
                     sync_result=sync,
                 )
                 results.append(ProcessedEmail(local_id, message, classification, reply, draft))
+                logger.info("Completed local message %s", local_id)
+                logger.debug(
+                    "Local message %s completed in %.1f ms",
+                    local_id,
+                    (perf_counter() - started) * 1000,
+                )
             except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
                 if local_id is not None:
                     try:
@@ -99,4 +114,6 @@ class ProcessingService:
                 results.append(
                     ProcessingFailure(message=message, local_id=local_id, error=str(exc))
                 )
+                logger.info("Processing failed for local message %s: %s", local_id or "new", exc)
+        logger.info("Processing batch finished with %d result(s)", len(results))
         return results

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from email_agent.agents import EmailAgents
@@ -7,6 +8,8 @@ from email_agent.config import AccountConfig, Settings
 from email_agent.llm import get_model
 from email_agent.mail import MailProvider, create_mail_provider
 from email_agent.storage import Database
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,13 +31,14 @@ class RuntimeFactory:
         self.settings = settings or Settings()
 
     def for_account(self, account_id: str, *, with_agents: bool = True) -> AccountRuntime:
+        logger.info("Loading account runtime for %s", account_id)
         account = self.settings.account(account_id)
         agents = (
             EmailAgents(self.settings.root, account.agent, get_model(account.model))
             if with_agents
             else None
         )
-        return AccountRuntime(
+        runtime = AccountRuntime(
             settings=self.settings,
             account_id=account_id,
             account=account,
@@ -42,3 +46,11 @@ class RuntimeFactory:
             database=Database(self.settings.database_path),
             agents=agents,
         )
+        logger.debug(
+            "Runtime ready: provider=%s model=%s agents=%s database=%s",
+            account.provider,
+            account.model.model,
+            with_agents,
+            self.settings.database_path,
+        )
+        return runtime

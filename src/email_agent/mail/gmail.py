@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import UTC, datetime
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+logger = logging.getLogger(__name__)
 
 
 class GmailProvider:
@@ -119,6 +121,11 @@ class GmailProvider:
         service = self._client()
         query = "in:inbox is:unread" if unread_only else "in:inbox"
         result = service.users().messages().list(userId="me", q=query, maxResults=limit).execute()
+        logger.debug(
+            "Gmail list returned %d message reference(s); unread_only=%s",
+            len(result.get("messages", [])),
+            unread_only,
+        )
         messages = [self.get_message(item["id"]) for item in result.get("messages", [])]
         return sorted(messages, key=lambda message: message.received_at, reverse=True)
 
@@ -159,6 +166,7 @@ class GmailProvider:
         """Replace the previous agent-managed label without touching other labels."""
         service = self._client()
         labels = service.users().labels().list(userId="me").execute().get("labels", [])
+        logger.debug("Gmail returned %d available labels", len(labels))
         by_name = {item.get("name", "").casefold(): item for item in labels}
         add_ids = []
         if destination is not None:
@@ -184,6 +192,7 @@ class GmailProvider:
             if old_label is not None:
                 remove_ids.append(old_label["id"])
         if not add_ids and not remove_ids:
+            logger.debug("No Gmail label change required")
             return
         body = {}
         if add_ids:
@@ -200,6 +209,7 @@ class GmailProvider:
             )
             .execute()
         )
+        logger.debug("Applied Gmail label changes: add=%d remove=%d", len(add_ids), len(remove_ids))
 
     @staticmethod
     def category_sync_key(destination: str) -> str:

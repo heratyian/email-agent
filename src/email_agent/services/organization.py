@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
 from email_agent.categories import category_destination
 from email_agent.models import EmailClassification
+
+logger = logging.getLogger(__name__)
 
 
 class OrganizationStatus(StrEnum):
@@ -86,7 +89,9 @@ class OrganizationService:
             raise ValueError("Reclassification requires configured model agents")
 
         report = OrganizationReport(dry_run=dry_run)
-        for row in self.database.list_categorized_messages(self.account_id, limit):
+        rows = self.database.list_categorized_messages(self.account_id, limit)
+        logger.info("Examining %d local messages for organization", len(rows))
+        for row in rows:
             report.items.append(
                 self._organize_one(
                     row,
@@ -96,6 +101,13 @@ class OrganizationService:
                     reclassify_all=reclassify_all,
                 )
             )
+        logger.info(
+            "Organization finished: changed=%d skipped=%d uncategorized=%d failed=%d",
+            report.changed,
+            report.skipped,
+            report.uncategorized,
+            report.failed,
+        )
         return report
 
     def _organize_one(

@@ -6,8 +6,10 @@ from datetime import time as datetime_time
 from typing import Annotated
 
 import typer
+from typer.core import TyperGroup
 
 from email_agent.config import PROJECT_ROOT, Settings
+from email_agent.observability import configure_logging, configure_model_tracing
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.scaffolding import (
     AccountProvider,
@@ -29,7 +31,31 @@ from email_agent.services import (
 )
 from email_agent.storage import Database
 
+
+class GlobalOptionsAnywhereGroup(TyperGroup):
+    """Allow diagnostic global flags anywhere before the argument separator."""
+
+    @staticmethod
+    def _normalize_verbose_args(args: list[str]) -> list[str]:
+        before_separator, separator, after_separator = args, [], []
+        if "--" in args:
+            index = args.index("--")
+            before_separator, separator, after_separator = args[:index], ["--"], args[index + 1 :]
+        global_options = [
+            value
+            for value in before_separator
+            if value in {"--verbose", "--trace-model"}
+            or (value.startswith("-") and len(value) > 1 and set(value[1:]) == {"v"})
+        ]
+        remaining = [value for value in before_separator if value not in global_options]
+        return [*global_options, *remaining, *separator, *after_separator]
+
+    def parse_args(self, ctx, args: list[str]) -> list[str]:
+        return super().parse_args(ctx, self._normalize_verbose_args(args))
+
+
 app = typer.Typer(
+    cls=GlobalOptionsAnywhereGroup,
     no_args_is_help=True,
     help="Safe, account-configured email triage and drafting.",
     epilog="""
@@ -44,6 +70,30 @@ config_app = typer.Typer(help="Configuration utilities.")
 account_app = typer.Typer(help="Create and manage mailbox accounts.")
 app.add_typer(config_app, name="config")
 app.add_typer(account_app, name="account")
+
+
+@app.callback()
+def main(
+    verbose: Annotated[
+        int,
+        typer.Option(
+            "--verbose",
+            "-v",
+            count=True,
+            help="Show workflow details; repeat (-vv) for diagnostics.",
+        ),
+    ] = 0,
+    trace_model: Annotated[
+        bool,
+        typer.Option(
+            "--trace-model",
+            help="Log exact model prompts and responses; may expose email content.",
+        ),
+    ] = False,
+):
+    """Configure diagnostics shared by every command."""
+    configure_logging(verbose)
+    configure_model_tracing(trace_model)
 
 GROUP_COLORS = {
     PriorityGroup.URGENT: typer.colors.BRIGHT_RED,

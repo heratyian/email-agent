@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
 from email_agent.models import EmailClassification, EmailMessage
+
+logger = logging.getLogger(__name__)
 
 
 class PriorityGroup(StrEnum):
@@ -57,16 +60,20 @@ class InboxService:
             return []
         results = []
         messages = self.provider.get_messages(limit, unread_only=unread_only)
+        logger.info("Examining %d recent inbox messages", len(messages))
         for message in sorted(messages, key=lambda item: item.received_at, reverse=True):
             saved = self.database.get_triage(message.account_id, message.provider_id)
             if saved:
                 local_id, classification = saved
+                logger.debug("Reusing classification for local message %s", local_id)
             else:
                 thread = self.provider.get_thread(message.provider_id)
                 classification = self.agents.classify(message, thread)
                 local_id = self.database.save_triage(message, classification)
+                logger.info("Classified local message %s as %s", local_id, classification.category)
             state = self.database.attention_state(local_id)
             if attention != "all" and state != attention:
+                logger.debug("Filtered local message %s with attention state %s", local_id, state)
                 continue
             results.append(
                 TriagedEmail(
@@ -78,4 +85,5 @@ class InboxService:
                     draft_ready=self.database.has_draft(local_id),
                 )
             )
+        logger.info("Returning %d messages in the %s view", len(results), attention)
         return results

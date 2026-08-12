@@ -66,6 +66,28 @@ uv run email-agent approve 1
 uv run email-agent monitor --account support@example.com --interval 300
 ```
 
+Add `-v` anywhere in the command for workflow details, or `-vv` for diagnostic provider and timing information:
+
+```bash
+uv run email-agent -v process --account you@gmail.com
+uv run email-agent organize --account you@gmail.com --dry-run -vv
+```
+
+Verbose logs are written to stderr, colored by severity in interactive terminals, and omit credentials, tokens, message bodies, and draft contents. Set `NO_COLOR=1` or redirect stderr to disable ANSI color.
+
+To inspect the exact payload sent to the configured model, add `--trace-model` anywhere in the command. This logs complete system prompts, email/thread content, and structured model responses to stderr, so use it only in a trusted terminal:
+
+```bash
+uv run email-agent inbox --account you@gmail.com --trace-model
+```
+
+`-v`, `-vv`, and `--trace-model` are global and may appear before the command, after a nested command, or after command-specific options. They can also be combined:
+
+```bash
+uv run email-agent account init --help -vv
+uv run email-agent inbox --account you@gmail.com -v --trace-model
+```
+
 `inbox` is the assistant's prioritized view of recent mail. Each message has familiar, user-facing attributes:
 
 - **Category** says what the message is about.

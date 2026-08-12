@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import email
 import imaplib
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from email_agent.config import AccountConfig
 from email_agent.mail.base import CategorySyncResult, CategorySyncState
 from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
+
+logger = logging.getLogger(__name__)
 
 
 def _header(value: str | None) -> str:
@@ -90,7 +93,13 @@ class ImapProvider:
             if status != "OK" or not data:
                 raise RuntimeError("IMAP message search failed")
             ids = reversed(data[0].split()[-limit:])
-            return [self._fetch(client, value.decode(), "INBOX") for value in ids]
+            messages = [self._fetch(client, value.decode(), "INBOX") for value in ids]
+            logger.debug(
+                "IMAP search returned %d message(s); unread_only=%s",
+                len(messages),
+                unread_only,
+            )
+            return messages
         finally:
             client.logout()
 
@@ -130,6 +139,12 @@ class ImapProvider:
     ) -> CategorySyncResult | None:
         """Replace the previous managed folder copy or move with ``destination``."""
         action = self.config.category_action or "copy"
+        logger.debug(
+            "Synchronizing IMAP category: action=%s destination=%s previous=%s",
+            action,
+            destination or "uncategorized",
+            previous.destination if previous else "none",
+        )
         if destination is None:
             if action == "copy":
                 self._delete_previous_copy(previous)
@@ -153,6 +168,7 @@ class ImapProvider:
                 self._delete_previous_copy(previous)
                 return CategorySyncResult(destination_uid, provider_name, source_moved=False)
             capabilities = self._capabilities(client)
+            logger.debug("IMAP capabilities relevant to organization: %s", sorted(capabilities))
             missing = {"MOVE", "UIDPLUS"} - capabilities
             if missing:
                 required = ", ".join(sorted(missing))
