@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 from time import perf_counter
 
-from email_agent.categories import category_destination
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
+from email_agent.services.category_routing import category_destination
 
 logger = logging.getLogger(__name__)
 

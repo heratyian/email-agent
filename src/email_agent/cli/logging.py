@@ -10,8 +10,6 @@ LEVEL_STYLES = {
     logging.CRITICAL: "1;91",
 }
 
-_trace_model = False
-
 
 class ColorLogFormatter(logging.Formatter):
     """Apply terminal-safe colors to complete log lines by severity."""
@@ -29,7 +27,7 @@ class ColorLogFormatter(logging.Formatter):
 
 
 def configure_logging(verbosity: int) -> None:
-    """Configure email-agent diagnostics without changing user-facing output."""
+    """Configure colored CLI diagnostics."""
     level = logging.DEBUG if verbosity >= 2 else logging.INFO if verbosity == 1 else logging.WARNING
     logger = logging.getLogger("email_agent")
     logger.handlers.clear()
@@ -44,18 +42,10 @@ def configure_logging(verbosity: int) -> None:
     logger.propagate = False
 
 
-def configure_model_tracing(enabled: bool) -> None:
-    """Enable explicit, sensitive model payload tracing for this process."""
-    global _trace_model
-    _trace_model = enabled
-    if enabled:
-        logger = logging.getLogger("email_agent")
-        logger.setLevel(min(logger.level, logging.INFO))
-        logging.getLogger(__name__).warning(
-            "Model tracing is enabled; logs may contain complete email and draft content"
-        )
-
-
-def model_tracing_enabled() -> bool:
-    """Return whether exact model payloads may be written to logs."""
-    return _trace_model
+def warn_model_tracing() -> None:
+    """Ensure and announce logging for sensitive exact model payloads."""
+    logger = logging.getLogger("email_agent")
+    logger.setLevel(min(logger.level, logging.INFO))
+    logging.getLogger(__name__).warning(
+        "Model tracing is enabled; logs may contain complete email and draft content"
+    )

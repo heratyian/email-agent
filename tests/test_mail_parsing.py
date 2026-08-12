@@ -3,9 +3,9 @@ import json
 from datetime import UTC, datetime, timedelta
 
 from email_agent.config import AccountConfig
-from email_agent.mail.base import CategorySyncState
-from email_agent.mail.gmail import GmailProvider
-from email_agent.mail.imap import ImapProvider
+from email_agent.providers.base import CategorySyncState
+from email_agent.providers.gmail import GmailProvider
+from email_agent.providers.imap import ImapProvider
 
 
 def _b64(text: str) -> str:

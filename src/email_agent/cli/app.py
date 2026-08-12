@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import time
-from datetime import date, datetime, timedelta
-from datetime import time as datetime_time
 from typing import Annotated
 
 import typer
 from typer.core import TyperGroup
 
+from email_agent.cli.logging import configure_logging, warn_model_tracing
+from email_agent.cli.parsing import parse_snooze
+from email_agent.cli.rendering import (
+    GROUP_COLORS,
+    category_name,
+    message_id,
+    render_processed,
+)
 from email_agent.config import PROJECT_ROOT, Settings
-from email_agent.observability import configure_logging, configure_model_tracing
-from email_agent.runtime import AccountRuntime, RuntimeFactory
-from email_agent.scaffolding import (
+from email_agent.db import Database
+from email_agent.diagnostics import configure_model_tracing
+from email_agent.generators import (
     AccountProvider,
     AgentTemplate,
     CategoryAction,
     ModelProvider,
 )
+from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.services import (
     PRIORITY_GROUP_ORDER,
     AccountService,
@@ -25,11 +32,9 @@ from email_agent.services import (
     MessageService,
     OrganizationService,
     OrganizationStatus,
-    PriorityGroup,
     ProcessingFailure,
     ProcessingService,
 )
-from email_agent.storage import Database
 
 
 class GlobalOptionsAnywhereGroup(TyperGroup):
@@ -94,23 +99,8 @@ def main(
     """Configure diagnostics shared by every command."""
     configure_logging(verbose)
     configure_model_tracing(trace_model)
-
-GROUP_COLORS = {
-    PriorityGroup.URGENT: typer.colors.BRIGHT_RED,
-    PriorityGroup.NORMAL: typer.colors.CYAN,
-    PriorityGroup.LOW: typer.colors.BRIGHT_BLACK,
-}
-
-
-def _category_name(category: str | None) -> str:
-    """Render an optional category for human-facing CLI output."""
-    return category.replace("_", " ") if category else "Uncategorized"
-
-
-def _message_id(value: int, *, prefix: str = "") -> None:
-    """Print a styled local message ID without ending the line."""
-    typer.secho(f"{prefix}{value}", fg=typer.colors.CYAN, bold=True, nl=False)
-
+    if trace_model:
+        warn_model_tracing()
 
 def _runtime(account_id: str, *, with_agents: bool = True) -> AccountRuntime:
     """Build typed dependencies for one CLI account command."""
@@ -240,33 +230,14 @@ def inbox(
         typer.secho("─" * len(group.value), fg=GROUP_COLORS[group])
         for item in grouped:
             sender = item.message.from_name or item.message.from_address
-            _message_id(item.local_id)
+            message_id(item.local_id)
             typer.echo(f"  {sender} — {item.message.subject}")
-            details = [_category_name(item.classification.category)]
+            details = [category_name(item.classification.category)]
             if item.draft_ready:
                 details.append("Draft ready")
             if attention == "all":
                 details.append(item.attention_state.title())
             typer.secho(f"    {' · '.join(details)}", fg=GROUP_COLORS[group])
-
-
-def _render(result):
-    c = result.classification
-    typer.echo()
-    _message_id(result.local_id, prefix="#")
-    typer.echo(
-        f"\n{result.message.from_name or result.message.from_address}\n{result.message.subject}"
-    )
-    typer.echo(
-        f"\nCategory: {_category_name(c.category)}\nIntent: {c.intent or '-'}\nPriority: {c.priority.upper()}\nReply recommended: {'YES' if c.requires_reply else 'NO'}"
-    )
-    if c.requires_escalation:
-        typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
-        typer.echo(c.escalation_reason)
-    if result.reply:
-        typer.secho("\nSuggested response:", fg=typer.colors.GREEN, bold=True)
-        typer.echo(f"\n{result.reply.body}")
-        typer.secho("\nSaved to local review queue.", fg=typer.colors.GREEN)
 
 
 @app.command()
@@ -284,7 +255,7 @@ def process(account: Annotated[str, typer.Option(help="Mailbox email address.")]
                 f"{label}{result.message.subject}: {result.error}", fg=typer.colors.BRIGHT_RED
             )
         else:
-            _render(result)
+            render_processed(result)
     succeeded = sum(not isinstance(result, ProcessingFailure) for result in results)
     failed = len(results) - succeeded
     typer.echo()
@@ -362,7 +333,7 @@ def organize(
                 f"{item.local_id}: uncategorized", fg=typer.colors.BRIGHT_BLACK
             )
         elif item.status in {OrganizationStatus.PREVIEW, OrganizationStatus.SYNCED}:
-            _message_id(item.local_id)
+            message_id(item.local_id)
             if item.status is OrganizationStatus.PREVIEW:
                 typer.echo(f"  {item.subject} → ", nl=False)
                 typer.secho(
@@ -419,7 +390,7 @@ def monitor(
                         fg=typer.colors.BRIGHT_RED,
                     )
                 else:
-                    _render(result)
+                    render_processed(result)
             time.sleep(interval)
     except KeyboardInterrupt:
         typer.echo("Stopped.")
@@ -451,7 +422,7 @@ def show_message(message_id: int):
     typer.echo(f"Subject: {message.subject}\n")
     typer.echo(message.content or "(No plain-text body)")
     if classification:
-        typer.echo(f"\nCategory: {_category_name(classification['category'])}")
+        typer.echo(f"\nCategory: {category_name(classification['category'])}")
         typer.echo(f"Priority: {classification['priority'].upper()}")
         typer.echo(f"Attention: {details.attention_state.title()}")
         typer.echo(f"Confidence: {classification['confidence']:.2f}")
@@ -511,24 +482,6 @@ def done(
         typer.echo("Deleted the untouched generated draft.")
 
 
-def _parse_snooze(value: str) -> datetime:
-    """Parse `tomorrow`, an ISO date, or an ISO datetime in the local timezone."""
-    local_tz = datetime.now().astimezone().tzinfo
-    if value.lower() == "tomorrow":
-        tomorrow = datetime.now(local_tz).date() + timedelta(days=1)
-        return datetime.combine(tomorrow, datetime_time(hour=9), tzinfo=local_tz)
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        try:
-            parsed = datetime.combine(date.fromisoformat(value), datetime_time(hour=9))
-        except ValueError as exc:
-            raise typer.BadParameter(
-                "--until must be 'tomorrow', YYYY-MM-DD, or an ISO datetime"
-            ) from exc
-    return parsed.replace(tzinfo=local_tz) if parsed.tzinfo is None else parsed
-
-
 @app.command()
 def snooze(
     message_id: Annotated[int, typer.Argument(help="Local message ID.")],
@@ -537,7 +490,10 @@ def snooze(
     ],
 ):
     """Hide a message from the open inbox until a later time."""
-    wake_at = _parse_snooze(until)
+    try:
+        wake_at = parse_snooze(until)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     try:
         result = MessageService(Settings()).snooze(message_id, wake_at)
     except (LookupError, ValueError) as exc:
@@ -554,7 +510,3 @@ def reopen(message_id: Annotated[int, typer.Argument(help="Local message ID.")])
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho(f"✓ Reopened “{result.subject}”.", fg=typer.colors.GREEN, bold=True)
-
-
-if __name__ == "__main__":
-    app()

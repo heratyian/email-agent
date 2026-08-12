@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.agents import EmailAgents
+from email_agent.ai.agents import EmailAgents
+from email_agent.ai.llm import get_model
 from email_agent.config import AccountConfig, Settings
-from email_agent.llm import get_model
-from email_agent.mail import MailProvider, create_mail_provider
-from email_agent.storage import Database
+from email_agent.db import Database
+from email_agent.providers import MailProvider, create_mail_provider
 
 logger = logging.getLogger(__name__)
 

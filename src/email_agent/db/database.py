@@ -5,9 +5,9 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from email_agent.mail.base import CategorySyncResult, CategorySyncState
-from email_agent.migrations import migrate
+from email_agent.db.migrations import migrate
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
+from email_agent.providers.base import CategorySyncResult, CategorySyncState
 
 
 class Database:

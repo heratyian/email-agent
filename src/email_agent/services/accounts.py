@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from email_agent.config import AccountConfig, Settings
-from email_agent.scaffolding import GeneratedAccount, generate_account
+from email_agent.generators import GeneratedAccount, generate_account
 
 logger = logging.getLogger(__name__)
 

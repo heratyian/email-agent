@@ -95,9 +95,9 @@ def generate_account(
             f"Refusing to overwrite existing file: {system_prompt.relative_to(root)}"
         )
 
-    template_directory = "customer_support" if template is AgentTemplate.SUPPORT else template.value
-    template_root = files("email_agent").joinpath("templates", template_directory)
-    account_text = template_root.joinpath("agent.yaml").read_text()
+    template_directory = "support" if template is AgentTemplate.SUPPORT else template.value
+    template_root = files("email_agent.generators").joinpath("templates", template_directory)
+    account_text = template_root.joinpath("account.yaml").read_text()
     replacements = {
         "MODEL_PROVIDER": model_provider.value,
         "MODEL_NAME": model,

@@ -1,10 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
 from email_agent.config import Settings
+from email_agent.db import Database
 from email_agent.models import DraftReply, EmailClassification, EmailMessage
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
-from email_agent.storage import Database
 
 
 def write_settings(root):

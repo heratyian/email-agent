@@ -1,6 +1,6 @@
 import logging
 
-from email_agent.storage import Database
+from email_agent.db import Database
 
 logger = logging.getLogger(__name__)
 

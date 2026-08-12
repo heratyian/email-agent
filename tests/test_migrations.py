@@ -1,7 +1,7 @@
 import sqlite3
 
-from email_agent.migrations import SCHEMA_VERSION
-from email_agent.storage import Database
+from email_agent.db import Database
+from email_agent.db.migrations import SCHEMA_VERSION
 
 
 def connect(path):

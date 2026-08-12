@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from email_agent.config import Settings
-from email_agent.mail import create_mail_provider
+from email_agent.db import Database
 from email_agent.models import EmailMessage
-from email_agent.storage import Database
+from email_agent.providers import create_mail_provider
 
 logger = logging.getLogger(__name__)
 

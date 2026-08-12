@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from email_agent.categories import category_destination
 from email_agent.models import EmailClassification
+from email_agent.services.category_routing import category_destination
 
 logger = logging.getLogger(__name__)
 

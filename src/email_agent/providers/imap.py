@@ -10,9 +10,9 @@ from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 from email_agent.config import AccountConfig
-from email_agent.mail.base import CategorySyncResult, CategorySyncState
-from email_agent.mail.common import html_to_text
 from email_agent.models import Draft, EmailMessage, EmailThread
+from email_agent.providers.base import CategorySyncResult, CategorySyncState
+from email_agent.providers.common import html_to_text
 
 logger = logging.getLogger(__name__)
 

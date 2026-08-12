@@ -1,22 +1,23 @@
+import importlib
 from types import SimpleNamespace
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
-from email_agent import cli
 from email_agent.cli import app
 from email_agent.config import AgentConfig
-from email_agent.models import EmailClassification, EmailMessage, EmailThread
-from email_agent.scaffolding import (
+from email_agent.generators import (
     AccountProvider,
     AgentTemplate,
     CategoryAction,
     ModelProvider,
     generate_account,
 )
+from email_agent.models import EmailClassification, EmailMessage, EmailThread
 
 runner = CliRunner()
+cli = importlib.import_module("email_agent.cli.app")
 
 
 @pytest.mark.parametrize("template", list(AgentTemplate))

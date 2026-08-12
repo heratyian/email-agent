@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from email_agent.categories import category_destination
 from email_agent.config import AgentConfig
-from email_agent.mail.base import CategorySyncResult
+from email_agent.db import Database
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
+from email_agent.providers.base import CategorySyncResult
+from email_agent.services.category_routing import category_destination
 from email_agent.services.inbox import InboxService, PriorityGroup, inbox_group
 from email_agent.services.processing import ProcessingFailure, ProcessingService
-from email_agent.storage import Database
 
 
 class FakeProvider:
@@ -355,7 +355,7 @@ def test_category_sync_audit_is_idempotent(tmp_path):
     assert db.get_triage("support@example.com", "categorized")[1].category == "reference"
 
 
-def test_legacy_category_maps_to_new_provider_destination():
+def test_unconfigured_category_is_rejected_instead_of_implicitly_mapped():
     classification = EmailClassification(
         category="needs_reply",
         requires_reply=True,
@@ -363,7 +363,8 @@ def test_legacy_category_maps_to_new_provider_destination():
         summary="Question",
         confidence=0.9,
     )
-    assert category_destination(make_agent(), classification) == "action"
+    with pytest.raises(KeyError, match="unknown category 'needs_reply'"):
+        category_destination(make_agent(), classification)
 
 
 def test_existing_category_maps_to_unique_nested_destination():

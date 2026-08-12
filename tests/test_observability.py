@@ -1,12 +1,8 @@
 import logging
 
-from email_agent.agents import EmailAgents
-from email_agent.observability import (
-    ColorLogFormatter,
-    configure_logging,
-    configure_model_tracing,
-    model_tracing_enabled,
-)
+from email_agent.ai.agents import EmailAgents
+from email_agent.cli.logging import ColorLogFormatter, configure_logging, warn_model_tracing
+from email_agent.diagnostics import configure_model_tracing, model_tracing_enabled
 
 
 def test_verbose_levels_filter_application_logs(capsys):
@@ -40,6 +36,7 @@ def test_color_formatter_styles_terminal_output_only():
 def test_model_tracing_is_explicit_and_emits_warning(capsys):
     configure_logging(0)
     configure_model_tracing(True)
+    warn_model_tracing()
 
     assert model_tracing_enabled() is True
     assert "may contain complete email" in capsys.readouterr().err
@@ -55,6 +52,7 @@ def test_model_trace_logs_exact_payload_only_when_enabled(capsys):
     assert "email secret" not in capsys.readouterr().err
 
     configure_model_tracing(True)
+    warn_model_tracing()
     capsys.readouterr()
     EmailAgents._trace_payload("classification", "system secret", "email secret")
     output = capsys.readouterr().err

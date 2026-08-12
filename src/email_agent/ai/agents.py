@@ -7,10 +7,10 @@ from time import perf_counter
 
 from langchain.agents import create_agent
 
+from email_agent.ai.prompts import format_thread, system_prompt
 from email_agent.config import AgentConfig
+from email_agent.diagnostics import model_tracing_enabled
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
-from email_agent.observability import model_tracing_enabled
-from email_agent.prompts import format_thread, system_prompt
 
 logger = logging.getLogger(__name__)
 

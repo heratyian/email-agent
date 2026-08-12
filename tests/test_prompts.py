@@ -1,5 +1,5 @@
+from email_agent.ai.prompts import strip_quoted_text, system_prompt
 from email_agent.config import AgentConfig
-from email_agent.prompts import strip_quoted_text, system_prompt
 
 
 def test_quoted_reply_content_is_removed():

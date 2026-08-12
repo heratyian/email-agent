@@ -120,7 +120,7 @@ Messages that do not clearly fit a configured category remain `Uncategorized`. T
 
 Use `organize` to backfill categories already stored locally without reclassifying messages or creating drafts. Start with `--dry-run`; successful syncs are recorded locally so later runs skip them and IMAP copies are not duplicated. `--force` deliberately retries all matching messages and can therefore duplicate IMAP copies.
 
-After changing the configured category taxonomy, stored messages may refer to categories that no longer exist. Use `organize --reclassify-unknown` to reclassify only those messages with the current taxonomy, or `--reclassify-all` when category meanings changed substantially. Reclassification preserves each message's open, snoozed, or done state. Combined with `--dry-run`, the model is called for a preview but neither the local classification nor mailbox is changed.
+`accounts.yaml` is the only category-routing authority; obsolete names are never translated implicitly. After changing the configured taxonomy, use `organize --reclassify-unknown` to reclassify stored categories that no longer exist, or `--reclassify-all` when category meanings changed substantially. Reclassification preserves each message's open, snoozed, or done state. Combined with `--dry-run`, the model is called for a preview but neither the local classification nor mailbox is changed.
 
 Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gmail users must remove or move their configured token file once and run a command again to grant the expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
 
@@ -128,7 +128,7 @@ Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gm
 
 ## Architecture
 
-`AccountConfig` contains the mailbox connection, model, system prompt, and categories in one flat structure. `MailProvider` normalizes Gmail and IMAP into the same models. Small application services handle accounts, inbox triage, processing, organization, messages, and drafts. `RuntimeFactory` builds the typed dependencies for account commands, while the CLI only parses options and renders results. Sending is not implemented, so generated replies always remain local drafts for review.
+The code is grouped by responsibility: `config/` defines and loads account configuration, `providers/` contains Gmail and IMAP adapters, `db/` owns SQLite persistence and migrations, `services/` implements application workflows, `ai/` owns model construction, prompts, and LangChain interactions, and `cli/` contains the Typer application, terminal logging, parsing, and rendering. Process-wide model-trace state lives in `diagnostics.py` so AI code does not depend on CLI formatting. `RuntimeFactory` builds typed dependencies for account commands, while `cli/app.py` declares commands and delegates their work. Shared email models and category rules remain outside AI because providers, storage, and services also use them. Sending is not implemented, so generated replies always remain local drafts for review.
 
 SQLite schema changes are applied automatically at startup as ordered, transactional migrations recorded in `schema_migrations`. Existing v0.1 databases are upgraded in place; back up `data/email_agent.db` before upgrading if it contains important local drafts.
 
