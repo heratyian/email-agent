@@ -349,6 +349,14 @@ class Database:
         with self.connect() as db:
             return db.execute(query + " ORDER BY created_at DESC", params).fetchall()
 
+    def get_draft(self, message_id: int) -> sqlite3.Row | None:
+        """Return the newest local draft for one message."""
+        with self.connect() as db:
+            return db.execute(
+                "SELECT * FROM drafts WHERE message_id=? ORDER BY created_at DESC LIMIT 1",
+                (message_id,),
+            ).fetchone()
+
     def show_message(self, message_id: int) -> sqlite3.Row | None:
         with self.connect() as db:
             return db.execute(
@@ -452,26 +460,6 @@ class Database:
                    FROM category_syncs WHERE message_id=? AND active=1
                    ORDER BY id DESC LIMIT 1""",
                 (message_id,),
-            ).fetchone()
-        if not row:
-            return None
-        values = dict(row)
-        values["destination"] = values["destination"].removeprefix("move:")
-        return CategorySyncState(**values)
-
-    def current_category_sync_for_provider(
-        self, account_id: str, provider_message_id: str
-    ) -> CategorySyncState | None:
-        """Return active category state using a provider's stable message identity."""
-        with self.connect() as db:
-            row = db.execute(
-                """SELECT s.destination, s.provider_uid AS provider_id,
-                          s.provider_mailbox AS mailbox
-                   FROM category_syncs AS s
-                   JOIN messages AS m ON m.id=s.message_id
-                   WHERE m.account_id=? AND m.provider_message_id=? AND s.active=1
-                   ORDER BY s.id DESC LIMIT 1""",
-                (account_id, provider_message_id),
             ).fetchone()
         if not row:
             return None

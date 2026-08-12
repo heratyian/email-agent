@@ -106,7 +106,7 @@ Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gm
 
 ## Architecture
 
-`AccountConfig` contains the mailbox connection, model, system prompt, and categories in one flat structure. `MailProvider` normalizes Gmail and IMAP into the same models. `EmailPipeline` deterministically classifies, optionally drafts, and persists workflow state. Sending is not implemented, so generated replies always remain local drafts for review.
+`AccountConfig` contains the mailbox connection, model, system prompt, and categories in one flat structure. `MailProvider` normalizes Gmail and IMAP into the same models. Small application services handle accounts, inbox triage, processing, organization, messages, and drafts. `RuntimeFactory` builds the typed dependencies for account commands, while the CLI only parses options and renders results. Sending is not implemented, so generated replies always remain local drafts for review.
 
 ## Tests
 

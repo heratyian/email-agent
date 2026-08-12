@@ -1,0 +1,32 @@
+from email_agent.models import EmailClassification
+
+LEGACY_CATEGORY_MAP = {
+    "needs_reply": "action",
+    "support_request": "action",
+    "urgent": "important",
+    "newsletter": "newsletters",
+    "spam": "noise",
+    "automated": "reference",
+    "informational": "reference",
+    "unknown": "important",
+}
+
+
+def category_destination(account, classification: EmailClassification) -> str | None:
+    """Return the provider-neutral label or folder for a configured category."""
+    key = classification.category
+    if key is None:
+        return None
+    if key not in account.categories:
+        key = LEGACY_CATEGORY_MAP.get(key, key)
+    if key not in account.categories:
+        matches = [
+            candidate
+            for candidate in account.categories
+            if candidate.rsplit("/", 1)[-1] == key
+        ]
+        if len(matches) == 1:
+            key = matches[0]
+    if key not in account.categories:
+        raise KeyError(f"unknown category {classification.category!r}")
+    return key

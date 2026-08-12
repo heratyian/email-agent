@@ -176,13 +176,12 @@ def test_reclassify_all_accepts_unknown_stored_category(monkeypatch):
     )
     monkeypatch.setattr(
         cli,
-        "_components",
-        lambda account, with_agents: (
-            None,
-            configured,
-            ReclassificationProvider(),
-            ReclassificationDatabase(old),
-            ReclassificationAgents(),
+        "_runtime",
+        lambda account, with_agents: SimpleNamespace(
+            account=configured,
+            provider=ReclassificationProvider(),
+            database=ReclassificationDatabase(old),
+            agents=ReclassificationAgents(),
         ),
     )
 

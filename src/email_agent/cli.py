@@ -1,32 +1,31 @@
 from __future__ import annotations
 
-import json
 import time
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from datetime import time as datetime_time
 from typing import Annotated
 
 import typer
 
-from email_agent.agents import EmailAgents
 from email_agent.config import PROJECT_ROOT, Settings
-from email_agent.llm import get_model
-from email_agent.mail import create_mail_provider
-from email_agent.models import EmailClassification
-from email_agent.pipeline import (
-    PRIORITY_GROUP_ORDER,
-    EmailPipeline,
-    PriorityGroup,
-    ProcessingFailure,
-    category_destination,
-    triage_inbox,
-)
+from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.scaffolding import (
     AccountProvider,
     AgentTemplate,
     CategoryAction,
     ModelProvider,
-    generate_account,
+)
+from email_agent.services import (
+    PRIORITY_GROUP_ORDER,
+    AccountService,
+    DraftService,
+    InboxService,
+    MessageService,
+    OrganizationService,
+    OrganizationStatus,
+    PriorityGroup,
+    ProcessingFailure,
+    ProcessingService,
 )
 from email_agent.storage import Database
 
@@ -63,24 +62,15 @@ def _message_id(value: int, *, prefix: str = "") -> None:
     typer.secho(f"{prefix}{value}", fg=typer.colors.CYAN, bold=True, nl=False)
 
 
-def _components(account_id: str, with_agents: bool = True):
-    settings = Settings()
-    account = settings.account(account_id)
-    provider = create_mail_provider(account_id, account, settings.root)
-    database = Database(settings.database_path)
-    agents = (
-        EmailAgents(settings.root, account.agent, get_model(account.agent.model))
-        if with_agents
-        else None
-    )
-    return settings, account, provider, database, agents
+def _runtime(account_id: str, *, with_agents: bool = True) -> AccountRuntime:
+    """Build typed dependencies for one CLI account command."""
+    return RuntimeFactory().for_account(account_id, with_agents=with_agents)
 
 
 @app.command()
 def accounts():
     """List configured mailbox accounts without connecting to them."""
-    settings = Settings()
-    for account_id, account in settings.accounts.items():
+    for account_id, account in AccountService(PROJECT_ROOT).list().items():
         typer.echo(f"{account_id}: {account.provider}")
 
 
@@ -111,8 +101,7 @@ def init_account(
 ):
     """Create or add a mailbox account in the private accounts.yaml file."""
     try:
-        generated = generate_account(
-            PROJECT_ROOT,
+        generated = AccountService(PROJECT_ROOT).create(
             email,
             provider,
             template,
@@ -146,14 +135,14 @@ def init_account(
 @config_app.command("validate")
 def validate_config():
     """Validate mailbox accounts, model settings, categories, and system prompts."""
-    settings = Settings()
-    for account_id, account in settings.accounts.items():
-        agent = account.agent
-        if not (settings.root / agent.system_prompt).is_file():
-            raise typer.BadParameter(f"Missing system prompt: {agent.system_prompt}")
+    try:
+        account_ids = AccountService(PROJECT_ROOT).validate()
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    for account_id in account_ids:
         typer.secho(f"✓ {account_id}", fg=typer.colors.GREEN)
     typer.secho(
-        f"Validated {len(settings.accounts)} accounts; sending is disabled.",
+        f"Validated {len(account_ids)} accounts; sending is disabled.",
         fg=typer.colors.GREEN,
         bold=True,
     )
@@ -184,12 +173,9 @@ def inbox(
     if selected > 1:
         raise typer.BadParameter("Use only one of --snoozed, --done, or --all")
     attention = "all" if all_messages else "snoozed" if snoozed else "done" if done else "open"
-    _, configured, provider, database, agents = _components(account)
-    typer.echo(f"Checking {configured.email}...")
-    items = triage_inbox(
-        provider,
-        agents,
-        database,
+    runtime = _runtime(account)
+    typer.echo(f"Checking {runtime.account.email}...")
+    items = InboxService(runtime.provider, runtime.agents, runtime.database).list(
         limit,
         unread_only=unread,
         attention=attention,
@@ -236,9 +222,11 @@ def _render(result):
 @app.command()
 def process(account: Annotated[str, typer.Option(help="Mailbox email address.")], limit: int = 20):
     """Complete pending message processing and save suggested replies for review."""
-    _, configured, provider, database, agents = _components(account)
-    typer.echo(f"Connecting to {configured.email}...")
-    results = EmailPipeline(account, configured.agent, provider, agents, database).process(limit)
+    runtime = _runtime(account)
+    typer.echo(f"Connecting to {runtime.account.email}...")
+    results = ProcessingService(
+        account, runtime.account.agent, runtime.provider, runtime.agents, runtime.database
+    ).process(limit)
     for result in results:
         if isinstance(result, ProcessingFailure):
             label = f"{result.local_id}: " if result.local_id is not None else ""
@@ -296,107 +284,65 @@ def organize(
     if reclassify_unknown and reclassify_all:
         raise typer.BadParameter("Use only one reclassification option")
     should_reclassify = reclassify_unknown or reclassify_all
-    _, configured, provider, database, agents = _components(account, with_agents=should_reclassify)
-    rows = database.list_categorized_messages(account, limit)
-    changed = skipped = uncategorized = failed = 0
-    typer.secho(f"Organizing {configured.email}...", fg=typer.colors.CYAN, bold=True)
+    runtime = _runtime(account, with_agents=should_reclassify)
+    typer.secho(f"Organizing {runtime.account.email}...", fg=typer.colors.CYAN, bold=True)
     if dry_run:
         typer.secho("DRY RUN — no mailbox changes will be made", fg=typer.colors.YELLOW)
-    for row in rows:
-        classification = EmailClassification.model_validate_json(row["classification"])
-        missing_category = False
-        if classification.category is None:
-            destination = None
-        else:
-            try:
-                destination = category_destination(configured.agent, classification)
-            except KeyError as exc:
-                missing_category = True
-                if should_reclassify:
-                    destination = None
-                else:
-                    failed += 1
-                    typer.secho(f"{row['id']}: {exc.args[0]}", fg=typer.colors.BRIGHT_RED)
-                    continue
-        if reclassify_all or (reclassify_unknown and missing_category):
-            try:
-                message = provider.get_message(row["provider_uid"], row["provider_mailbox"])
-                thread = provider.get_thread(row["provider_uid"], row["provider_mailbox"])
-                classification = agents.classify(message, thread)
-                destination = category_destination(configured.agent, classification)
-            except Exception as exc:  # noqa: BLE001 - continue the remaining batch
-                failed += 1
-                typer.secho(f"{row['id']}: reclassification failed: {exc}", fg=typer.colors.RED)
-                continue
+    report = OrganizationService(
+        account, runtime.account, runtime.provider, runtime.database, runtime.agents
+    ).run(
+        limit=limit,
+        dry_run=dry_run,
+        force=force,
+        reclassify_unknown=reclassify_unknown,
+        reclassify_all=reclassify_all,
+    )
+    for item in report.items:
+        if item.reclassified_as is not None:
             typer.secho(
-                f"{row['id']}: reclassified as {classification.category}",
+                f"{item.local_id}: reclassified as {item.reclassified_as}",
                 fg=typer.colors.YELLOW,
             )
-            if not dry_run:
-                database.update_classification(row["id"], classification)
-        if destination is None:
-            previous = database.current_category_sync(row["id"])
-            if should_reclassify and previous is not None:
-                if dry_run:
-                    changed += 1
-                    _message_id(row["id"])
-                    typer.echo(f"  {row['subject']} → ", nl=False)
-                    typer.secho("uncategorized", fg=typer.colors.MAGENTA, bold=True)
-                    continue
-                try:
-                    provider.sync_category(
-                        row["provider_uid"], None, row["provider_mailbox"], previous
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    failed += 1
-                    typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
-                    continue
-                database.mark_category_synced(row["id"], None)
-                changed += 1
-                _message_id(row["id"])
-                typer.secho("  ✓ uncategorized", fg=typer.colors.GREEN, bold=True)
-                continue
-            uncategorized += 1
-            typer.secho(f"{row['id']}: uncategorized", fg=typer.colors.BRIGHT_BLACK)
-            continue
-        sync_key = provider.category_sync_key(destination)
-        if not force and database.category_was_synced(row["id"], sync_key):
-            skipped += 1
-            continue
-        if dry_run:
-            changed += 1
-            _message_id(row["id"])
-            typer.echo(f"  {row['subject']} → ", nl=False)
-            typer.secho(destination, fg=typer.colors.MAGENTA, bold=True)
-            continue
-        try:
-            previous = database.current_category_sync(row["id"])
-            sync = provider.sync_category(
-                row["provider_uid"], destination, row["provider_mailbox"], previous
+        if item.status is OrganizationStatus.FAILED:
+            typer.secho(
+                f"{item.local_id}: {item.error}", fg=typer.colors.BRIGHT_RED
             )
-        except Exception as exc:  # noqa: BLE001 - one provider failure must not stop the batch
-            failed += 1
-            typer.secho(f"{row['id']}: {exc}", fg=typer.colors.BRIGHT_RED)
-            continue
-        if sync is not None and sync.source_moved:
-            database.update_provider_location(row["id"], sync.provider_id, sync.mailbox)
-        database.mark_category_synced(row["id"], sync_key, sync)
-        changed += 1
-        _message_id(row["id"])
-        typer.secho(f"  ✓ {destination}", fg=typer.colors.GREEN, bold=True)
+        elif item.status is OrganizationStatus.UNCATEGORIZED:
+            typer.secho(
+                f"{item.local_id}: uncategorized", fg=typer.colors.BRIGHT_BLACK
+            )
+        elif item.status in {OrganizationStatus.PREVIEW, OrganizationStatus.SYNCED}:
+            _message_id(item.local_id)
+            if item.status is OrganizationStatus.PREVIEW:
+                typer.echo(f"  {item.subject} → ", nl=False)
+                typer.secho(
+                    item.destination or "uncategorized",
+                    fg=typer.colors.MAGENTA,
+                    bold=True,
+                )
+            else:
+                typer.secho(
+                    f"  ✓ {item.destination or 'uncategorized'}",
+                    fg=typer.colors.GREEN,
+                    bold=True,
+                )
 
     action = "would sync" if dry_run else "synced"
     typer.echo()
-    typer.secho(f"{changed} {action}", fg=typer.colors.GREEN, bold=True, nl=False)
-    typer.echo(", ", nl=False)
-    typer.secho(f"{skipped} already synced", fg=typer.colors.BRIGHT_BLACK, nl=False)
-    typer.echo(", ", nl=False)
-    typer.secho(f"{uncategorized} uncategorized", fg=typer.colors.BRIGHT_BLACK, nl=False)
+    typer.secho(f"{report.changed} {action}", fg=typer.colors.GREEN, bold=True, nl=False)
     typer.echo(", ", nl=False)
     typer.secho(
-        f"{failed} failed.",
-        fg=typer.colors.RED if failed else typer.colors.BRIGHT_BLACK,
-        bold=bool(failed),
+        f"{report.skipped} already synced", fg=typer.colors.BRIGHT_BLACK, nl=False
+    )
+    typer.echo(", ", nl=False)
+    typer.secho(
+        f"{report.uncategorized} uncategorized", fg=typer.colors.BRIGHT_BLACK, nl=False
+    )
+    typer.echo(", ", nl=False)
+    typer.secho(
+        f"{report.failed} failed.",
+        fg=typer.colors.RED if report.failed else typer.colors.BRIGHT_BLACK,
+        bold=bool(report.failed),
     )
 
 
@@ -409,12 +355,14 @@ def monitor(
     """Poll a mailbox until interrupted."""
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
-    _, configured, provider, database, agents = _components(account)
-    pipeline = EmailPipeline(account, configured.agent, provider, agents, database)
-    typer.echo(f"Monitoring {configured.email} every {interval}s. Ctrl-C to stop.")
+    runtime = _runtime(account)
+    processing = ProcessingService(
+        account, runtime.account.agent, runtime.provider, runtime.agents, runtime.database
+    )
+    typer.echo(f"Monitoring {runtime.account.email} every {interval}s. Ctrl-C to stop.")
     try:
         while True:
-            for result in pipeline.process(limit):
+            for result in processing.process(limit):
                 if isinstance(result, ProcessingFailure):
                     typer.secho(
                         f"{result.message.subject}: {result.error}",
@@ -433,7 +381,8 @@ def drafts(account: Annotated[str | None, typer.Option()] = None):
     settings = Settings()
     if account:
         settings.account(account)
-    for row in Database(settings.database_path).list_drafts(account):
+    service = DraftService(Database(settings.database_path))
+    for row in service.list(account):
         typer.echo(
             f"{row['message_id']}: [{row['status']}] To {row['recipient']} — {row['subject']}"
         )
@@ -442,14 +391,11 @@ def drafts(account: Annotated[str | None, typer.Option()] = None):
 @app.command("show")
 def show_message(message_id: int):
     """Retrieve and show a mailbox message using its local database ID."""
-    settings = Settings()
-    row = Database(settings.database_path).show_message(message_id)
-    if not row:
-        raise typer.BadParameter("message not found")
-    account = settings.accounts[row["account_id"]]
-    provider = create_mail_provider(row["account_id"], account, settings.root)
-    message = provider.get_message(row["provider_uid"], row["provider_mailbox"])
-    classification = json.loads(row["classification"]) if row["classification"] else None
+    try:
+        details = MessageService(Settings()).show(message_id)
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    message, classification = details.message, details.classification
 
     typer.echo(f"From: {message.from_name or message.from_address}")
     typer.echo(f"Subject: {message.subject}\n")
@@ -457,7 +403,7 @@ def show_message(message_id: int):
     if classification:
         typer.echo(f"\nCategory: {_category_name(classification['category'])}")
         typer.echo(f"Priority: {classification['priority'].upper()}")
-        typer.echo(f"Attention: {row['attention_state'].title()}")
+        typer.echo(f"Attention: {details.attention_state.title()}")
         typer.echo(f"Confidence: {classification['confidence']:.2f}")
         typer.echo(f"Summary: {classification['summary']}")
         if classification.get("requires_escalation"):
@@ -473,14 +419,10 @@ def show_message(message_id: int):
 def show_draft(message_id: int):
     """Show the local draft associated with a processed message."""
     settings = Settings()
-    rows = [
-        row
-        for row in Database(settings.database_path).list_drafts()
-        if row["message_id"] == message_id
-    ]
-    if not rows:
-        raise typer.BadParameter("draft not found")
-    row = rows[0]
+    try:
+        row = DraftService(Database(settings.database_path)).get(message_id)
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(
         f"To: {row['recipient']}\nSubject: {row['subject']}\n\n{row['body']}\n\nStatus: {row['status']}"
     )
@@ -490,8 +432,10 @@ def show_draft(message_id: int):
 def approve(message_id: int):
     """Mark a local draft approved without sending it."""
     settings = Settings()
-    if not Database(settings.database_path).approve(message_id):
-        raise typer.BadParameter("draft not found")
+    try:
+        DraftService(Database(settings.database_path)).approve(message_id)
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     typer.secho("Draft approved locally. No email was sent.", fg=typer.colors.GREEN, bold=True)
 
 
@@ -507,15 +451,13 @@ def done(
     ] = False,
 ):
     """Mark a message handled here or in another channel."""
-    settings = Settings()
-    database = Database(settings.database_path)
-    row = database.set_attention(message_id, "done")
-    if not row:
-        raise typer.BadParameter("message not found")
-    deleted = database.delete_generated_drafts(message_id) if delete_draft else 0
-    typer.secho(f"✓ Marked “{row['subject']}” done.", fg=typer.colors.GREEN, bold=True)
+    try:
+        result = MessageService(Settings()).done(message_id, delete_draft=delete_draft)
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho(f"✓ Marked “{result.subject}” done.", fg=typer.colors.GREEN, bold=True)
     typer.echo("The email remains in your mailbox.")
-    if deleted:
+    if result.deleted_drafts:
         typer.echo("Deleted the untouched generated draft.")
 
 
@@ -546,26 +488,22 @@ def snooze(
 ):
     """Hide a message from the open inbox until a later time."""
     wake_at = _parse_snooze(until)
-    if wake_at.astimezone(UTC) <= datetime.now(UTC):
-        raise typer.BadParameter("--until must be in the future")
-    settings = Settings()
-    row = Database(settings.database_path).set_attention(
-        message_id, "snoozed", snoozed_until=wake_at
-    )
-    if not row:
-        raise typer.BadParameter("message not found")
-    typer.secho(f"✓ Snoozed “{row['subject']}”.", fg=typer.colors.GREEN, bold=True)
+    try:
+        result = MessageService(Settings()).snooze(message_id, wake_at)
+    except (LookupError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho(f"✓ Snoozed “{result.subject}”.", fg=typer.colors.GREEN, bold=True)
     typer.echo(f"Returns to Open at {wake_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}.")
 
 
 @app.command()
 def reopen(message_id: Annotated[int, typer.Argument(help="Local message ID.")]):
     """Return a done or snoozed message to the open inbox."""
-    settings = Settings()
-    row = Database(settings.database_path).set_attention(message_id, "open")
-    if not row:
-        raise typer.BadParameter("message not found")
-    typer.secho(f"✓ Reopened “{row['subject']}”.", fg=typer.colors.GREEN, bold=True)
+    try:
+        result = MessageService(Settings()).reopen(message_id)
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho(f"✓ Reopened “{result.subject}”.", fg=typer.colors.GREEN, bold=True)
 
 
 if __name__ == "__main__":

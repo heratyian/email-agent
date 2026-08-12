@@ -2,17 +2,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from email_agent.categories import category_destination
 from email_agent.config import AgentConfig
 from email_agent.mail.base import CategorySyncResult
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
-from email_agent.pipeline import (
-    EmailPipeline,
-    PriorityGroup,
-    ProcessingFailure,
-    category_destination,
-    inbox_group,
-    triage_inbox,
-)
+from email_agent.services.inbox import InboxService, PriorityGroup, inbox_group
+from email_agent.services.processing import ProcessingFailure, ProcessingService
 from email_agent.storage import Database
 
 
@@ -97,7 +92,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
     agent = make_agent()
     db = Database(tmp_path / "test.db")
     provider = FakeProvider(message)
-    results = EmailPipeline("support@example.com", agent, provider, FakeAgents(), db).process()
+    results = ProcessingService("support@example.com", agent, provider, FakeAgents(), db).process()
     assert results[0].classification.intent == "login_problem"
     assert results[0].draft.status == "generated"
     assert len(db.list_drafts()) == 1
@@ -105,7 +100,7 @@ def test_pipeline_classifies_and_stores_local_draft(tmp_path):
     assert provider.message_queries == [(20, False)]
     assert db.category_was_synced(results[0].local_id, "action") is True
     assert (
-        EmailPipeline(
+        ProcessingService(
             "support@example.com", agent, FakeProvider(message), FakeAgents(), db
         ).process()
         == []
@@ -121,7 +116,7 @@ def test_pipeline_tracks_moved_imap_uid_without_changing_stable_identity(tmp_pat
         received_at=datetime.now(UTC),
     )
     db = Database(tmp_path / "test.db")
-    result = EmailPipeline(
+    result = ProcessingService(
         "support@example.com", make_agent(), FakeMoveProvider(message), FakeAgents(), db
     ).process()[0]
 
@@ -142,7 +137,7 @@ def test_pipeline_sync_failure_stays_pending_and_retries_without_duplicate_draft
     db = Database(tmp_path / "test.db")
     agent = make_agent()
 
-    failed = EmailPipeline(
+    failed = ProcessingService(
         "support@example.com", agent, FailingSyncProvider(message), FakeAgents(), db
     ).process()
 
@@ -151,7 +146,7 @@ def test_pipeline_sync_failure_stays_pending_and_retries_without_duplicate_draft
     assert db.is_processed(message.account_id, message.provider_id) is False
     assert len(db.list_drafts()) == 1
 
-    retried = EmailPipeline(
+    retried = ProcessingService(
         "support@example.com", agent, FakeProvider(message), FakeAgents(), db
     ).process()
 
@@ -191,7 +186,7 @@ def test_pipeline_isolates_one_message_failure_from_the_rest_of_the_batch(tmp_pa
             return super().sync_category(message_id, destination, source_mailbox, previous)
 
     db = Database(tmp_path / "test.db")
-    results = EmailPipeline(
+    results = ProcessingService(
         "support@example.com", make_agent(), MixedProvider(first), FakeAgents(), db
     ).process()
 
@@ -271,7 +266,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     )
     db = Database(tmp_path / "test.db")
     agents = FakeAgents()
-    results = triage_inbox(FakeProvider(message), agents, db)
+    results = InboxService(FakeProvider(message), agents, db).list()
     assert results[0].group is PriorityGroup.NORMAL
     assert results[0].attention_state == "open"
     assert results[0].local_id > 0
@@ -279,19 +274,19 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     assert db.is_processed(message.account_id, message.provider_id) is False
     assert db.list_drafts() == []
 
-    repeated = triage_inbox(FakeProvider(message), agents, db)
+    repeated = InboxService(FakeProvider(message), agents, db).list()
     assert repeated[0].local_id == results[0].local_id
     assert repeated[0].attention_state == "open"
     assert agents.classification_calls == 1
 
-    processed = EmailPipeline(
+    processed = ProcessingService(
         "support@example.com", make_agent(), FakeProvider(message), agents, db
     ).process()
     assert processed[0].local_id == results[0].local_id
     assert processed[0].draft is not None
     assert db.is_processed(message.account_id, message.provider_id) is True
 
-    browsed = triage_inbox(FakeProvider(message), agents, db)
+    browsed = InboxService(FakeProvider(message), agents, db).list()
     assert browsed[0].local_id == results[0].local_id
     assert browsed[0].attention_state == "open"
 
