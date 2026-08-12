@@ -2,7 +2,7 @@
 
 The email agent uses a Google OAuth **Desktop app** client to read Gmail and apply category labels. Keep the downloaded client configuration and generated token out of source control.
 
-The app requests the `gmail.modify` scope because category synchronization creates and applies user labels. It still never sends email or modifies message content.
+The app requests `gmail.modify` to synchronize category labels and `gmail.compose` to upload suggested replies into Gmail Drafts. It never sends email or modifies message content.
 
 ## 1. Create and configure a Google Cloud project
 
@@ -94,6 +94,6 @@ secrets/gmail_credentials.json
 
 Testing-mode grants can expire. Rerun the `inbox` command to authorize again. If an obsolete token prevents a fresh flow, move `secrets/gmail_token.json` aside and retry; keep the backup until authorization succeeds.
 
-The same one-time reauthorization is required when upgrading from the earlier read-only release to category synchronization. If the CLI says `gmail.modify` is required, move the account's configured token file aside and rerun the command. The new browser consent creates a replacement token with label permission.
+The same one-time reauthorization is required when upgrading from an earlier release that lacks label or draft permission. If the CLI says `gmail.modify` or `gmail.compose` is required, move the account's configured token file aside and rerun the command. The new browser consent creates a replacement token with label and draft permission.
 
 For more detail, see Google's documentation for [managing an app audience](https://support.google.com/cloud/answer/15549945) and [OAuth verification setup](https://support.google.com/cloud/answer/13461325).

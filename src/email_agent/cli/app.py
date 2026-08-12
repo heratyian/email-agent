@@ -11,7 +11,8 @@ from email_agent.cli.parsing import parse_snooze
 from email_agent.cli.rendering import (
     GROUP_COLORS,
     category_name,
-    message_id,
+    inbox_table_header,
+    inbox_table_row,
     render_processed,
 )
 from email_agent.config import PROJECT_ROOT, Settings
@@ -74,7 +75,7 @@ Then run: email-agent inbox
 account_app = typer.Typer(
     help="Add, list, and validate mailbox accounts.", invoke_without_command=True
 )
-drafts_app = typer.Typer(help="Review and approve suggested replies.", invoke_without_command=True)
+drafts_app = typer.Typer(help="Review and upload suggested replies.", invoke_without_command=True)
 message_app = typer.Typer(help="View or update an individual message.")
 app.add_typer(account_app, name="account")
 app.add_typer(drafts_app, name="drafts")
@@ -218,12 +219,12 @@ def _refresh_inbox(
     limit: int,
     dry_run: bool,
     reorganize: bool,
-) -> None:
+) -> int:
     """Process new mail and optionally repair categories before rendering."""
     typer.echo(f"Checking {runtime.account.email}...")
     if dry_run:
         typer.secho("DRY RUN — mailbox labels and drafts will not change", fg=typer.colors.YELLOW)
-        return
+        return 0
 
     results = ProcessingService(
         account_id,
@@ -232,12 +233,32 @@ def _refresh_inbox(
         runtime.agents,
         runtime.database,
     ).process(limit)
+    if results:
+        typer.secho("\nProcessed mail", bold=True)
+        inbox_table_header()
     for result in results:
         if isinstance(result, ProcessingFailure):
-            label = f"{result.local_id}: " if result.local_id is not None else ""
-            typer.secho(f"{label}{result.message.subject}: {result.error}", fg=typer.colors.RED)
+            inbox_table_row(
+                local_id=result.local_id or "?",
+                priority="error",
+                sender=result.message.from_name or result.message.from_address,
+                subject=f"{result.message.subject}: {result.error}",
+                category=None,
+                draft_ready=False,
+                state="failed",
+                color=typer.colors.RED,
+            )
         else:
             render_processed(result)
+    succeeded = [item for item in results if not isinstance(item, ProcessingFailure)]
+    drafts = sum(item.draft is not None for item in succeeded)
+    failures = len(results) - len(succeeded)
+    if results:
+        typer.secho(
+            f"Processed {len(succeeded)} · {drafts} drafts ready · {failures} failed",
+            fg=typer.colors.RED if failures else typer.colors.GREEN,
+            bold=True,
+        )
 
     if reorganize:
         report = OrganizationService(
@@ -254,30 +275,39 @@ def _refresh_inbox(
             f"Reorganized {report.changed}; {report.failed} failed.",
             fg=typer.colors.RED if report.failed else typer.colors.GREEN,
         )
+    return len(succeeded)
 
 
-def _render_inbox(runtime: AccountRuntime, limit: int, unread: bool, attention: str) -> None:
+def _render_inbox(
+    runtime: AccountRuntime,
+    limit: int,
+    unread: bool,
+    attention: str,
+    processed_count: int = 0,
+) -> None:
     """Render the prioritized mailbox view after refresh."""
     items = InboxService(runtime.provider, runtime.agents, runtime.database).list(
         limit, unread_only=unread, attention=attention
     )
-    typer.echo(f"\n{len(items)} recent messages")
+    if not items and processed_count:
+        typer.echo("\nNew messages are shown above; organized messages may have moved from Inbox.")
+        return
+    typer.echo(f"\nPrioritized inbox · {len(items)} messages")
+    if items:
+        inbox_table_header()
     for group in PRIORITY_GROUP_ORDER:
-        grouped = [item for item in items if item.group is group]
-        if not grouped:
-            continue
-        typer.secho(f"\n{group.value}", fg=GROUP_COLORS[group], bold=True)
-        typer.secho("─" * len(group.value), fg=GROUP_COLORS[group])
-        for item in grouped:
+        for item in (item for item in items if item.group is group):
             sender = item.message.from_name or item.message.from_address
-            message_id(item.local_id)
-            typer.echo(f"  {sender} — {item.message.subject}")
-            details = [category_name(item.classification.category)]
-            if item.draft_ready:
-                details.append("Draft ready")
-            if attention == "all":
-                details.append(item.attention_state.title())
-            typer.secho(f"    {' · '.join(details)}", fg=GROUP_COLORS[group])
+            inbox_table_row(
+                local_id=item.local_id,
+                priority=item.classification.priority,
+                sender=sender,
+                subject=item.message.subject,
+                category=item.classification.category,
+                draft_ready=item.draft_ready,
+                state=item.attention_state,
+                color=GROUP_COLORS[group],
+            )
 
 
 @app.command()
@@ -322,8 +352,8 @@ def inbox(
     runtime = _runtime(account_id)
     try:
         while True:
-            _refresh_inbox(runtime, account_id, limit, dry_run, reorganize)
-            _render_inbox(runtime, limit, unread, attention)
+            processed_count = _refresh_inbox(runtime, account_id, limit, dry_run, reorganize)
+            _render_inbox(runtime, limit, unread, attention, processed_count)
             if not watch:
                 break
             typer.echo(f"\nWatching every {interval}s. Ctrl-C to stop.")
@@ -334,17 +364,20 @@ def inbox(
 
 @drafts_app.callback()
 def drafts(ctx: typer.Context, account: Annotated[str | None, typer.Option()] = None):
-    """Review and approve suggested replies."""
+    """Review and upload suggested replies."""
     if ctx.invoked_subcommand is not None:
         return
     settings = Settings()
     if account:
         settings.account(account)
     service = DraftService(Database(settings.database_path))
-    for row in service.list(account):
-        typer.echo(
-            f"{row['message_id']}: [{row['status']}] To {row['recipient']} — {row['subject']}"
-        )
+    rows = service.list(account)
+    if not rows:
+        typer.echo("No draft suggestions to review.")
+        return
+    typer.echo(f"{len(rows)} draft suggestions. Run 'email-agent drafts review' to review them.")
+    for row in rows:
+        typer.echo(f"{row['message_id']}: To {row['recipient']} — {row['subject']}")
 
 
 @message_app.command("show")
@@ -388,14 +421,60 @@ def show_draft(message_id: int):
 
 
 @drafts_app.command()
-def approve(message_id: int):
-    """Mark a local draft approved without sending it."""
+def upload(message_id: int):
+    """Upload a suggestion to the mailbox Drafts folder without sending."""
     settings = Settings()
     try:
-        DraftService(Database(settings.database_path)).approve(message_id)
+        DraftService(Database(settings.database_path), settings).upload(message_id)
+    except (LookupError, RuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN, bold=True)
+
+
+@drafts_app.command("delete")
+def delete_draft(message_id: int):
+    """Delete a local draft suggestion without changing the mailbox."""
+    settings = Settings()
+    try:
+        DraftService(Database(settings.database_path)).delete(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    typer.secho("Draft approved locally. No email was sent.", fg=typer.colors.GREEN, bold=True)
+    typer.secho("✓ Deleted draft suggestion.", fg=typer.colors.GREEN, bold=True)
+
+
+@drafts_app.command()
+def review(account: Annotated[str | None, typer.Option()] = None):
+    """Cycle through draft suggestions and upload, delete, keep, or quit."""
+    settings = Settings()
+    if account:
+        settings.account(account)
+    service = DraftService(Database(settings.database_path), settings)
+    rows = service.list(account)
+    if not rows:
+        typer.echo("No draft suggestions to review.")
+        return
+    for row in rows:
+        typer.secho(f"\n#{row['message_id']} · To {row['recipient']}", fg=typer.colors.CYAN, bold=True)
+        typer.echo(f"Subject: {row['subject']}\n\n{row['body']}\n")
+        choice = typer.prompt(
+            "[u] Upload  [d] Delete  [k] Keep  [q] Quit",
+            default="k",
+            show_default=False,
+        ).strip().lower()
+        if choice in {"q", "quit"}:
+            break
+        if choice in {"u", "upload"}:
+            try:
+                service.upload(row["message_id"])
+            except (LookupError, RuntimeError) as exc:
+                typer.secho(f"Upload failed: {exc}", fg=typer.colors.RED)
+            else:
+                typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN)
+        elif choice in {"d", "delete"}:
+            service.delete(row["message_id"])
+            typer.secho("✓ Deleted suggestion.", fg=typer.colors.GREEN)
+        else:
+            typer.echo("Kept for later.")
 
 
 @message_app.command()

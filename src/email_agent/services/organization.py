@@ -146,6 +146,8 @@ class OrganizationService:
                 reclassified_as = classification.category or "uncategorized"
                 if not dry_run:
                     self.database.update_classification(local_id, classification)
+                    if not classification.requires_reply:
+                        self.database.delete_generated_drafts(local_id)
             except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
                 return OrganizationItem(
                     local_id,

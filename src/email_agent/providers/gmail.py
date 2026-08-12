@@ -3,15 +3,19 @@ from __future__ import annotations
 import base64
 import logging
 from datetime import UTC, datetime
+from email.message import EmailMessage as MimeMessage
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from pathlib import Path
 
 from email_agent.config import AccountConfig
-from email_agent.models import Draft, EmailMessage, EmailThread
+from email_agent.models import EmailMessage, EmailThread
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.common import html_to_text
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.compose",
+]
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +47,8 @@ class GmailProvider:
             credentials = Credentials.from_authorized_user_file(str(token_path))
             if not credentials.has_scopes(SCOPES):
                 raise RuntimeError(
-                    "Gmail category sync needs gmail.modify permission. Delete or move "
+                    "Gmail organization and draft upload need gmail.modify and gmail.compose "
+                    "permissions. Delete or move "
                     f"{token_path}, then run the command again to authorize the new scope."
                 )
         if not credentials or not credentials.valid:
@@ -150,8 +155,32 @@ class GmailProvider:
         )
         return EmailThread(messages=[self._parse(item) for item in data.get("messages", [])])
 
-    def create_draft(self, message_id: str, body: str) -> Draft:
-        raise NotImplementedError("Native Gmail draft creation is disabled in this release")
+    def upload_draft(
+        self,
+        source: EmailMessage,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+    ) -> str:
+        """Create a Gmail draft reply without sending it."""
+        message = MimeMessage()
+        message["To"] = recipient
+        message["Subject"] = subject
+        if source.in_reply_to:
+            message["In-Reply-To"] = source.in_reply_to
+        references = [*source.references]
+        if source.in_reply_to and source.in_reply_to not in references:
+            references.append(source.in_reply_to)
+        if references:
+            message["References"] = " ".join(references)
+        message.set_content(body)
+        payload = {"message": {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}}
+        if source.thread_id:
+            payload["message"]["threadId"] = source.thread_id
+        created = self._client().users().drafts().create(userId="me", body=payload).execute()
+        logger.info("Uploaded Gmail draft for message %s", source.provider_id)
+        return created["id"]
 
     def mark_processed(self, message_id: str) -> None:
         return None

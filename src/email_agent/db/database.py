@@ -264,9 +264,9 @@ class Database:
             )
 
     def list_drafts(self, account_id: str | None = None) -> list[sqlite3.Row]:
-        query, params = "SELECT * FROM drafts", ()
+        query, params = "SELECT * FROM drafts WHERE status='generated'", ()
         if account_id:
-            query, params = query + " WHERE account_id=?", (account_id,)
+            query, params = query + " AND account_id=?", (account_id,)
         with self.connect() as db:
             return db.execute(query + " ORDER BY created_at DESC", params).fetchall()
 
@@ -432,10 +432,20 @@ class Database:
                 (provider_id, mailbox, message_id),
             )
 
-    def approve(self, message_id: int) -> bool:
+    def mark_draft_uploaded(self, message_id: int) -> bool:
+        """Remove a successfully uploaded suggestion from the local review queue."""
         with self.connect() as db:
             cursor = db.execute(
-                "UPDATE drafts SET status='approved' WHERE message_id=? AND status!='sent'",
+                "UPDATE drafts SET status='uploaded' WHERE message_id=? AND status='generated'",
+                (message_id,),
+            )
+        return cursor.rowcount > 0
+
+    def reject_draft(self, message_id: int) -> bool:
+        """Remove a suggestion from review while retaining an audit record."""
+        with self.connect() as db:
+            cursor = db.execute(
+                "UPDATE drafts SET status='rejected' WHERE message_id=? AND status='generated'",
                 (message_id,),
             )
         return cursor.rowcount > 0

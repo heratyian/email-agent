@@ -7,10 +7,11 @@ import os
 import re
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
+from email.message import EmailMessage as MimeMessage
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 from email_agent.config import AccountConfig
-from email_agent.models import Draft, EmailMessage, EmailThread
+from email_agent.models import EmailMessage, EmailThread
 from email_agent.providers.base import CategorySyncResult, CategorySyncState
 from email_agent.providers.common import html_to_text
 
@@ -119,8 +120,57 @@ class ImapProvider:
     def get_thread(self, message_id: str, mailbox: str = "INBOX") -> EmailThread:
         return EmailThread(messages=[self.get_message(message_id, mailbox)])
 
-    def create_draft(self, message_id: str, body: str) -> Draft:
-        raise NotImplementedError("IMAP drafts are stored locally by the application")
+    def upload_draft(
+        self,
+        source: EmailMessage,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+    ) -> str:
+        """Append a reply draft to the server's Drafts mailbox without sending it."""
+        message = MimeMessage()
+        message["From"] = self.account_id
+        message["To"] = recipient
+        message["Subject"] = subject
+        if source.in_reply_to:
+            message["In-Reply-To"] = source.in_reply_to
+        references = [*source.references]
+        if source.in_reply_to and source.in_reply_to not in references:
+            references.append(source.in_reply_to)
+        if references:
+            message["References"] = " ".join(references)
+        message.set_content(body)
+
+        client = self._connect()
+        try:
+            drafts_mailbox = self._drafts_mailbox(client)
+            self._ensure_folder(client, drafts_mailbox)
+            status, _ = client.append(
+                self._mailbox(drafts_mailbox), "(\\Draft)", None, message.as_bytes()
+            )
+            if status != "OK":
+                raise RuntimeError(f"Could not upload draft to IMAP folder: {drafts_mailbox}")
+            response, values = client.response("APPENDUID")
+            if response == "APPENDUID" and values and values[0]:
+                value = values[0].decode() if isinstance(values[0], bytes) else values[0]
+                return value.split()[-1]
+            return "uploaded"
+        finally:
+            client.logout()
+
+    @staticmethod
+    def _drafts_mailbox(client) -> str:
+        """Use the server-advertised special-use Drafts folder when available."""
+        status, rows = client.list()
+        if status == "OK":
+            for row in rows or []:
+                text = row.decode(errors="replace") if isinstance(row, bytes) else row
+                if "\\Drafts" in text:
+                    match = re.search(r' (?:"([^"]+)"|([^ ]+))$', text)
+                    if match:
+                        return match.group(1) or match.group(2)
+        return "Drafts"
 
     def mark_processed(self, message_id: str) -> None:
         return None

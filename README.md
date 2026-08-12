@@ -59,10 +59,12 @@ uv run email-agent inbox --account you@gmail.com --watch
 uv run email-agent message done 1
 uv run email-agent message snooze 1 --until tomorrow
 uv run email-agent message reopen 1
-uv run email-agent drafts --account you@gmail.com
 uv run email-agent message show 1
+uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts show 1
-uv run email-agent drafts approve 1
+uv run email-agent drafts review --account you@gmail.com
+uv run email-agent drafts upload 1
+uv run email-agent drafts delete 1
 ```
 
 Add `-v` anywhere in the command for workflow details, or `-vv` for diagnostic provider and timing information:
@@ -95,7 +97,7 @@ uv run email-agent inbox --account you@gmail.com -v --trace-model
 
 The default inbox shows messages that still need attention. `message done LOCAL_ID` records that you handled one—possibly by phone, Slack, or another channel—without changing the email in the provider. `message snooze LOCAL_ID --until ...` hides it until later, and `message reopen LOCAL_ID` returns it to the open inbox. Use `--done`, `--snoozed`, or `--all` to change the view. Snooze accepts `tomorrow`, an ISO date, or an ISO datetime.
 
-`message done --delete-draft` also removes an untouched generated draft. Reviewed or approved drafts are always preserved. Read/unread status and internal processing bookkeeping remain separate and are not exposed as workflow concepts.
+`message done --delete-draft` also removes an untouched generated draft. Uploaded drafts are always preserved in the mailbox. Read/unread status and internal processing bookkeeping remain separate and are not exposed as workflow concepts.
 
 `inbox` handles each message independently. A model, mailbox, or storage error is reported for that message while the rest of the batch continues. Classification and draft results are saved before mailbox changes, and a message is marked processed only after synchronization succeeds; failed messages remain eligible for the next run without creating duplicate drafts. Add `--watch` to keep checking, `--dry-run` to classify without changing the mailbox or generating drafts, or `--reorganize` after changing category definitions.
 
@@ -119,9 +121,9 @@ Messages that do not clearly fit a configured category remain `Uncategorized`. T
 
 `accounts.yaml` is the only category-routing authority; obsolete names are never translated implicitly. After changing the configured taxonomy, use `inbox --reorganize` to reclassify and resync recent stored messages. Reclassification preserves each message's open, snoozed, or done state.
 
-Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gmail users must remove or move their configured token file once and run a command again to grant the expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
+Gmail organization and draft upload require the `gmail.modify` and `gmail.compose` OAuth scopes. Existing Gmail users must remove or move their configured token file once and run a command again to grant expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
 
-`drafts approve` only changes local draft state. It does not send email. Raw email bodies are not persisted; `message show` retrieves the current body from the mailbox using the stored provider ID.
+`drafts review` cycles through suggestions. Upload saves a real draft in Gmail or the IMAP Drafts folder and removes it from the local review queue; it never sends email. Delete dismisses the local suggestion without changing the mailbox. Raw email bodies are not persisted; `message show` retrieves the current body from the mailbox using the stored provider ID.
 
 ## Architecture
 

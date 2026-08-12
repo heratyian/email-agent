@@ -1,8 +1,11 @@
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from email import message_from_bytes
+from email.policy import default
 
 from email_agent.config import AccountConfig
+from email_agent.models import EmailMessage
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.gmail import GmailProvider
 from email_agent.providers.imap import ImapProvider
@@ -21,6 +24,18 @@ def account(provider: str, **values) -> AccountConfig:
             "system_prompt": "prompts/test/system.md",
             **values,
         }
+    )
+
+
+def source_message() -> EmailMessage:
+    return EmailMessage(
+        provider_id="source-1",
+        thread_id="thread-1",
+        account_id="person@example.com",
+        from_address="sender@example.com",
+        subject="Question",
+        received_at=datetime.now(UTC),
+        in_reply_to="<original@example.com>",
     )
 
 
@@ -200,6 +215,47 @@ def test_imap_category_move_returns_new_folder_scoped_uid(monkeypatch):
     assert provider.category_sync_key("agent/action") == "move:agent/action"
 
 
+def test_imap_uploads_message_to_advertised_drafts_folder(monkeypatch):
+    provider = ImapProvider(
+        "person@example.com",
+        account(
+            "imap",
+            username_env="USER_ENV",
+            password_env="PASSWORD_ENV",
+            imap_host="imap.example.com",
+        ),
+    )
+
+    class DraftClient(FakeImapClient):
+        def list(self):
+            return "OK", [b'(\\HasNoChildren \\Drafts) "/" "INBOX.Drafts"']
+
+        def append(self, mailbox, flags, date_time, message):
+            self.appended = (mailbox, flags, message)
+            return "OK", []
+
+        def response(self, code):
+            assert code == "APPENDUID"
+            return "APPENDUID", [b"12345 88"]
+
+    client = DraftClient()
+    monkeypatch.setattr(provider, "_connect", lambda mailbox="INBOX": client)
+
+    provider_id = provider.upload_draft(
+        source_message(),
+        recipient="sender@example.com",
+        subject="Re: Question",
+        body="Here is the answer.",
+    )
+
+    assert provider_id == "88"
+    assert client.appended[0] == '"INBOX.Drafts"'
+    assert client.appended[1] == "(\\Draft)"
+    uploaded = message_from_bytes(client.appended[2], policy=default)
+    assert uploaded["To"] == "sender@example.com"
+    assert uploaded.get_content().strip() == "Here is the answer."
+
+
 class Executable:
     def __init__(self, result, calls=None, call=None):
         self.result = result
@@ -224,6 +280,9 @@ class FakeGmailService:
         return self
 
     def messages(self):
+        return self
+
+    def drafts(self):
         return self
 
     def list(self, **kwargs):
@@ -254,6 +313,32 @@ def test_gmail_category_sync_reuses_existing_label(tmp_path, monkeypatch):
             },
         )
     ]
+
+
+def test_gmail_uploads_threaded_draft_without_sending(tmp_path, monkeypatch):
+    provider = GmailProvider("personal", account("gmail"), tmp_path)
+    service = FakeGmailService([])
+
+    def create(**kwargs):
+        service.calls.append(("create-draft", kwargs))
+        return Executable({"id": "draft-1"})
+
+    monkeypatch.setattr(service, "create", create)
+    monkeypatch.setattr(provider, "_client", lambda: service)
+
+    provider_id = provider.upload_draft(
+        source_message(),
+        recipient="sender@example.com",
+        subject="Re: Question",
+        body="Here is the answer.",
+    )
+
+    assert provider_id == "draft-1"
+    payload = service.calls[0][1]["body"]["message"]
+    uploaded = message_from_bytes(base64.urlsafe_b64decode(payload["raw"]), policy=default)
+    assert payload["threadId"] == "thread-1"
+    assert uploaded["To"] == "sender@example.com"
+    assert uploaded.get_content().strip() == "Here is the answer."
 
 
 def test_gmail_category_sync_creates_missing_label(tmp_path, monkeypatch):

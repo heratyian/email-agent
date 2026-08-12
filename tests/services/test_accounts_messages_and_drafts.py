@@ -86,7 +86,7 @@ def test_message_service_manages_attention_and_retrieves_provider_message(tmp_pa
     assert details.classification["category"] == "action"
 
 
-def test_draft_service_gets_and_approves_one_message_draft(tmp_path):
+def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, monkeypatch):
     database = Database(tmp_path / "email-agent.db")
     source = message()
     reply = DraftReply(
@@ -97,8 +97,44 @@ def test_draft_service_gets_and_approves_one_message_draft(tmp_path):
         confidence=0.9,
     )
     database.save_result(source, classification(), reply)
-    service = DraftService(database)
+    settings = write_settings(tmp_path)
+
+    class Provider:
+        def get_message(self, provider_id, mailbox):
+            return source
+
+        def upload_draft(self, source, **draft):
+            assert draft["body"] == "Here is the answer."
+            return "mailbox-draft-1"
+
+    monkeypatch.setattr(
+        "email_agent.services.drafts.create_mail_provider",
+        lambda account_id, account, root: Provider(),
+    )
+    service = DraftService(database, settings)
 
     assert service.get(1)["subject"] == "Re: Question"
-    service.approve(1)
-    assert service.get(1)["status"] == "approved"
+    assert service.upload(1) == "mailbox-draft-1"
+    assert service.get(1)["status"] == "uploaded"
+    assert service.list() == []
+
+
+def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
+    database = Database(tmp_path / "email-agent.db")
+    database.save_result(
+        message(),
+        classification(),
+        DraftReply(
+            recipient="sender@example.com",
+            subject="Re: Question",
+            body="No thanks.",
+            reasoning_summary="Decline.",
+            confidence=0.9,
+        ),
+    )
+
+    service = DraftService(database)
+    service.delete(1)
+
+    assert service.get(1)["status"] == "rejected"
+    assert service.list() == []

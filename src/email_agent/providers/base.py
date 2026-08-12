@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from email_agent.models import Draft, EmailMessage, EmailThread
+from email_agent.models import EmailMessage, EmailThread
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,14 @@ class MailProvider(Protocol):
     def get_messages(self, limit: int = 20, *, unread_only: bool = False) -> list[EmailMessage]: ...
     def get_message(self, message_id: str, mailbox: str = "INBOX") -> EmailMessage: ...
     def get_thread(self, message_id: str, mailbox: str = "INBOX") -> EmailThread: ...
-    def create_draft(self, message_id: str, body: str) -> Draft: ...
+    def upload_draft(
+        self,
+        source: EmailMessage,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+    ) -> str: ...
     def mark_processed(self, message_id: str) -> None: ...
     def sync_category(
         self,

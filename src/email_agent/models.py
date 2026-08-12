@@ -70,5 +70,5 @@ class Draft(BaseModel):
     to: list[str]
     subject: str
     body: str
-    status: Literal["generated", "reviewed", "approved", "rejected", "sent"] = "generated"
+    status: Literal["generated", "reviewed", "uploaded", "rejected", "sent"] = "generated"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
