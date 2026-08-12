@@ -46,12 +46,6 @@ Run a command that connects to Gmail:
 uv run email-agent inbox --account you@gmail.com
 ```
 
-or:
-
-```bash
-uv run email-agent process --account you@gmail.com --limit 5
-```
-
 Your browser will open Google's consent flow. Sign in with the same address added under **Test users**. After successful authorization, the app stores the refresh token at:
 
 ```text
@@ -84,7 +78,7 @@ the OAuth client is valid, but the Gmail API is not enabled in the Google Cloud 
 2. Open the [Gmail API page](https://console.cloud.google.com/apis/library/gmail.googleapis.com) in Google Cloud Console.
 3. Confirm that the selected project matches the project identified in the error.
 4. Click **Enable**.
-5. Wait a few minutes for the change to propagate, then rerun the `inbox` or `process` command.
+5. Wait a few minutes for the change to propagate, then rerun the `inbox` command.
 
 You do not need to recreate `gmail_credentials.json`, remove `gmail_token.json`, or repeat authorization. The existing OAuth token should work after the Gmail API is enabled.
 
@@ -98,7 +92,7 @@ secrets/gmail_credentials.json
 
 ### Authorization needs to be repeated
 
-Testing-mode grants can expire. Rerun an `inbox` or `process` command to authorize again. If an obsolete token prevents a fresh flow, move `secrets/gmail_token.json` aside and retry; keep the backup until authorization succeeds.
+Testing-mode grants can expire. Rerun the `inbox` command to authorize again. If an obsolete token prevents a fresh flow, move `secrets/gmail_token.json` aside and retry; keep the backup until authorization succeeds.
 
 The same one-time reauthorization is required when upgrading from the earlier read-only release to category synchronization. If the CLI says `gmail.modify` is required, move the account's configured token file aside and rerun the command. The new browser consent creates a replacement token with label permission.
 
