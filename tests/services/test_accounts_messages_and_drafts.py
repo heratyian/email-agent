@@ -5,6 +5,7 @@ from email_agent.db import Database
 from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
+from email_agent.services.drafts import reply_subject
 
 
 def write_settings(root):
@@ -98,6 +99,7 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
 
         def upload_draft(self, source, **draft):
             assert draft["body"] == "Here is the answer."
+            assert draft["subject"] == "Re: Question"
             return "mailbox-draft-1"
 
     monkeypatch.setattr(
@@ -111,6 +113,13 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
     assert service.upload(1) == "mailbox-draft-1"
     assert service.get(1)["status"] == "uploaded"
     assert service.list() == []
+
+
+def test_reply_subject_uses_original_subject_without_duplicate_prefix():
+    assert reply_subject("Question") == "Re: Question"
+    assert reply_subject("Re: Question") == "Re: Question"
+    assert reply_subject("re: Question") == "re: Question"
+    assert reply_subject("") == "Re: (no subject)"
 
 
 def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):

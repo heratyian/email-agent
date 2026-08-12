@@ -9,6 +9,12 @@ from email_agent.providers import create_mail_provider
 logger = logging.getLogger(__name__)
 
 
+def reply_subject(original_subject: str) -> str:
+    """Return one stable reply subject without stacking ``Re:`` prefixes."""
+    subject = original_subject.strip() or "(no subject)"
+    return subject if subject.casefold().startswith("re:") else f"Re: {subject}"
+
+
 class DraftService:
     """List, retrieve, upload, and discard local draft suggestions."""
 
@@ -81,7 +87,7 @@ class DraftService:
         provider_id = provider.upload_draft(
             source,
             recipient=draft["recipient"],
-            subject=draft["subject"],
+            subject=reply_subject(source.subject),
             body=draft["body"],
         )
         if not self.database.mark_draft_uploaded(message_id):
