@@ -28,20 +28,28 @@ class DraftService:
         logger.debug("Draft status for local message %s: %s", message_id, row["status"])
         return row
 
-    def upload(self, message_id: int) -> str:
-        """Upload one suggestion to its mailbox Drafts folder without sending."""
+    def source_message(self, message_id: int):
+        """Retrieve the original mailbox message for one local draft."""
         if self.settings is None:
-            raise RuntimeError("Draft upload requires account settings")
-        draft = self.get(message_id)
+            raise RuntimeError("Reading the source message requires account settings")
         message_row = self.database.show_message(message_id)
         if not message_row:
             raise LookupError("message not found")
         account_id = message_row["account_id"]
         account = self.settings.account(account_id)
         provider = create_mail_provider(account_id, account, self.settings.root)
-        source = provider.get_message(
+        return provider.get_message(
             message_row["provider_uid"], message_row["provider_mailbox"]
         )
+
+    def upload(self, message_id: int) -> str:
+        """Upload one suggestion to its mailbox Drafts folder without sending."""
+        if self.settings is None:
+            raise RuntimeError("Draft upload requires account settings")
+        draft = self.get(message_id)
+        source = self.source_message(message_id)
+        account = self.settings.account(source.account_id)
+        provider = create_mail_provider(source.account_id, account, self.settings.root)
         provider_id = provider.upload_draft(
             source,
             recipient=draft["recipient"],

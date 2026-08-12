@@ -454,7 +454,19 @@ def review(account: Annotated[str | None, typer.Option()] = None):
         typer.echo("No draft suggestions to review.")
         return
     for row in rows:
-        typer.secho(f"\n#{row['message_id']} · To {row['recipient']}", fg=typer.colors.CYAN, bold=True)
+        typer.secho(f"\nDraft #{row['message_id']}", fg=typer.colors.CYAN, bold=True)
+        try:
+            source = service.source_message(row["message_id"])
+        except Exception as exc:  # noqa: BLE001 - keep the review queue usable
+            typer.secho(f"Original message unavailable: {exc}", fg=typer.colors.RED)
+        else:
+            typer.secho("\nOriginal message", bold=True)
+            typer.echo(f"From: {source.from_name or source.from_address}")
+            typer.echo(f"Subject: {source.subject}")
+            typer.echo(f"Received: {source.received_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}")
+            typer.echo(f"\n{source.content or '(No plain-text body)'}")
+        typer.secho("\nSuggested reply", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"To: {row['recipient']}")
         typer.echo(f"Subject: {row['subject']}\n\n{row['body']}\n")
         choice = typer.prompt(
             "[u] Upload  [d] Delete  [k] Keep  [q] Quit",

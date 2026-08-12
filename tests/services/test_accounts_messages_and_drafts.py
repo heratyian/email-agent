@@ -114,6 +114,7 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
     service = DraftService(database, settings)
 
     assert service.get(1)["subject"] == "Re: Question"
+    assert service.source_message(1).content == source.content
     assert service.upload(1) == "mailbox-draft-1"
     assert service.get(1)["status"] == "uploaded"
     assert service.list() == []

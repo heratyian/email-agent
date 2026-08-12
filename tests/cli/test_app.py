@@ -1,4 +1,5 @@
 import importlib
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -138,3 +139,36 @@ def test_nested_commands_are_discoverable():
         result = runner.invoke(app, [group, "--help"])
         assert result.exit_code == 0
         assert all(command in result.output for command in commands)
+
+
+def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
+    class Service:
+        def list(self, account):
+            return [
+                {
+                    "message_id": 175,
+                    "recipient": "sender@example.com",
+                    "subject": "Re: A question",
+                    "body": "Suggested answer.",
+                }
+            ]
+
+        def source_message(self, message_id):
+            return SimpleNamespace(
+                from_name="Karen Hall",
+                from_address="sender@example.com",
+                subject="A question",
+                received_at=datetime(2026, 8, 12, 12, tzinfo=UTC),
+                content="Original email body.",
+            )
+
+    monkeypatch.setattr(cli, "DraftService", lambda *args, **kwargs: Service())
+
+    result = runner.invoke(app, ["drafts", "review"], input="q\n")
+
+    assert result.exit_code == 0
+    assert "Original message" in result.output
+    assert "Karen Hall" in result.output
+    assert "Original email body." in result.output
+    assert "Suggested reply" in result.output
+    assert "Suggested answer." in result.output
