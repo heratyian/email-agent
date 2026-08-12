@@ -35,7 +35,9 @@ def source_message() -> EmailMessage:
         from_address="sender@example.com",
         subject="Question",
         received_at=datetime.now(UTC),
-        in_reply_to="<original@example.com>",
+        message_id="<source@example.com>",
+        in_reply_to="<parent@example.com>",
+        references=["<root@example.com>", "<parent@example.com>"],
     )
 
 
@@ -253,6 +255,10 @@ def test_imap_uploads_message_to_advertised_drafts_folder(monkeypatch):
     assert client.appended[1] == "(\\Draft)"
     uploaded = message_from_bytes(client.appended[2], policy=default)
     assert uploaded["To"] == "sender@example.com"
+    assert uploaded["In-Reply-To"] == "<source@example.com>"
+    assert uploaded["References"] == (
+        "<root@example.com> <parent@example.com> <source@example.com>"
+    )
     assert uploaded.get_content().strip() == "Here is the answer."
 
 
@@ -338,6 +344,10 @@ def test_gmail_uploads_threaded_draft_without_sending(tmp_path, monkeypatch):
     uploaded = message_from_bytes(base64.urlsafe_b64decode(payload["raw"]), policy=default)
     assert payload["threadId"] == "thread-1"
     assert uploaded["To"] == "sender@example.com"
+    assert uploaded["In-Reply-To"] == "<source@example.com>"
+    assert uploaded["References"] == (
+        "<root@example.com> <parent@example.com> <source@example.com>"
+    )
     assert uploaded.get_content().strip() == "Here is the answer."
 
 

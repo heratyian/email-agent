@@ -22,6 +22,7 @@ class EmailMessage(BaseModel):
     text_body: str | None = None
     html_body: str | None = None
     received_at: datetime
+    message_id: str | None = None
     in_reply_to: str | None = None
     references: list[str] = Field(default_factory=list)
 

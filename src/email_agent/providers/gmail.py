@@ -115,6 +115,7 @@ class GmailProvider:
             text_body=text or html_to_text(html),
             html_body=html,
             received_at=received,
+            message_id=headers.get("message-id"),
             in_reply_to=headers.get("in-reply-to"),
             references=headers.get("references", "").split(),
         )
@@ -167,11 +168,11 @@ class GmailProvider:
         message = MimeMessage()
         message["To"] = recipient
         message["Subject"] = subject
-        if source.in_reply_to:
-            message["In-Reply-To"] = source.in_reply_to
+        if source.message_id:
+            message["In-Reply-To"] = source.message_id
         references = [*source.references]
-        if source.in_reply_to and source.in_reply_to not in references:
-            references.append(source.in_reply_to)
+        if source.message_id and source.message_id not in references:
+            references.append(source.message_id)
         if references:
             message["References"] = " ".join(references)
         message.set_content(body)
