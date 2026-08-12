@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from email_agent.mail.base import CategorySyncResult, CategorySyncState
+from email_agent.migrations import migrate
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
 
 
@@ -33,83 +34,7 @@ class Database:
 
     def initialize(self) -> None:
         with self.connect() as db:
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY, account_id TEXT NOT NULL,
-                    provider_message_id TEXT NOT NULL, provider_uid TEXT,
-                    provider_mailbox TEXT NOT NULL DEFAULT 'INBOX',
-                    thread_id TEXT,
-                    from_address TEXT NOT NULL, from_name TEXT, subject TEXT NOT NULL,
-                    received_at TEXT NOT NULL,
-                    triaged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    processed_at TEXT,
-                    attention_state TEXT NOT NULL DEFAULT 'open',
-                    snoozed_until TEXT,
-                    done_at TEXT,
-                    UNIQUE(account_id, provider_message_id)
-                );
-                CREATE TABLE IF NOT EXISTS classifications (
-                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL UNIQUE,
-                    payload TEXT NOT NULL, FOREIGN KEY(message_id) REFERENCES messages(id)
-                );
-                CREATE TABLE IF NOT EXISTS drafts (
-                    id TEXT PRIMARY KEY, message_id INTEGER NOT NULL, account_id TEXT NOT NULL,
-                    source_message_id TEXT NOT NULL, recipient TEXT NOT NULL, subject TEXT NOT NULL,
-                    body TEXT NOT NULL, status TEXT NOT NULL, metadata TEXT NOT NULL,
-                    created_at TEXT NOT NULL, FOREIGN KEY(message_id) REFERENCES messages(id)
-                );
-                CREATE TABLE IF NOT EXISTS agent_runs (
-                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, account_id TEXT NOT NULL,
-                    agent_version INTEGER NOT NULL, prompt_version INTEGER NOT NULL,
-                    model TEXT NOT NULL, latency_ms INTEGER NOT NULL, draft_generated INTEGER NOT NULL,
-                    error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE IF NOT EXISTS category_syncs (
-                    id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL,
-                    destination TEXT NOT NULL, provider_uid TEXT, provider_mailbox TEXT,
-                    active INTEGER NOT NULL DEFAULT 1,
-                    synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(message_id, destination),
-                    FOREIGN KEY(message_id) REFERENCES messages(id)
-                );
-            """)
-            columns = {row["name"] for row in db.execute("PRAGMA table_info(messages)")}
-            if "triaged_at" not in columns:
-                db.execute("ALTER TABLE messages ADD COLUMN triaged_at TEXT")
-                db.execute(
-                    "UPDATE messages SET triaged_at=COALESCE(processed_at, CURRENT_TIMESTAMP)"
-                )
-            if "attention_state" not in columns:
-                db.execute(
-                    "ALTER TABLE messages ADD COLUMN attention_state TEXT NOT NULL DEFAULT 'open'"
-                )
-            if "snoozed_until" not in columns:
-                db.execute("ALTER TABLE messages ADD COLUMN snoozed_until TEXT")
-            if "done_at" not in columns:
-                db.execute("ALTER TABLE messages ADD COLUMN done_at TEXT")
-            if "provider_mailbox" not in columns:
-                db.execute(
-                    "ALTER TABLE messages ADD COLUMN provider_mailbox TEXT NOT NULL DEFAULT 'INBOX'"
-                )
-            if "provider_uid" not in columns:
-                db.execute("ALTER TABLE messages ADD COLUMN provider_uid TEXT")
-                db.execute("UPDATE messages SET provider_uid=provider_message_id")
-            sync_columns = {
-                row["name"] for row in db.execute("PRAGMA table_info(category_syncs)")
-            }
-            if "provider_uid" not in sync_columns:
-                db.execute("ALTER TABLE category_syncs ADD COLUMN provider_uid TEXT")
-            if "provider_mailbox" not in sync_columns:
-                db.execute("ALTER TABLE category_syncs ADD COLUMN provider_mailbox TEXT")
-            if "active" not in sync_columns:
-                db.execute(
-                    "ALTER TABLE category_syncs ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
-                )
-            run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
-            if "profile_id" in run_columns and "account_id" not in run_columns:
-                db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_id TO account_id")
-            if "profile_version" in run_columns and "agent_version" not in run_columns:
-                db.execute("ALTER TABLE agent_runs RENAME COLUMN profile_version TO agent_version")
+            migrate(db)
 
     def is_processed(self, account_id: str, provider_id: str) -> bool:
         """Return whether full agent processing—not merely inbox triage—completed."""
@@ -306,12 +231,10 @@ class Database:
                 "UPDATE messages SET processed_at=CURRENT_TIMESTAMP WHERE id=?", (message_id,)
             )
             db.execute(
-                "INSERT INTO agent_runs(message_id,account_id,agent_version,prompt_version,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?,?,NULL)",
+                "INSERT INTO agent_runs(message_id,account_id,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,NULL)",
                 (
                     message_id,
                     account_id,
-                    agent.version,
-                    agent.version,
                     f"{agent.model.provider}:{agent.model.model}",
                     latency_ms,
                     drafted,
@@ -329,12 +252,10 @@ class Database:
     ) -> None:
         with self.connect() as db:
             db.execute(
-                "INSERT INTO agent_runs(message_id,account_id,agent_version,prompt_version,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO agent_runs(message_id,account_id,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?)",
                 (
                     message_id,
                     account_id,
-                    agent.version,
-                    agent.version,
                     f"{agent.model.provider}:{agent.model.model}",
                     latency_ms,
                     drafted,

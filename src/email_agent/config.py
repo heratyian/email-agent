@@ -40,11 +40,6 @@ class AgentConfig(BaseModel):
     system_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
-    @property
-    def version(self) -> int:
-        """Internal run-record version, intentionally absent from user configuration."""
-        return 1
-
     @field_validator("categories")
     @classmethod
     def valid_categories(cls, value: dict[str, str]) -> dict[str, str]:

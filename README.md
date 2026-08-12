@@ -130,6 +130,8 @@ Enabling Gmail organization requires the `gmail.modify` OAuth scope. Existing Gm
 
 `AccountConfig` contains the mailbox connection, model, system prompt, and categories in one flat structure. `MailProvider` normalizes Gmail and IMAP into the same models. Small application services handle accounts, inbox triage, processing, organization, messages, and drafts. `RuntimeFactory` builds the typed dependencies for account commands, while the CLI only parses options and renders results. Sending is not implemented, so generated replies always remain local drafts for review.
 
+SQLite schema changes are applied automatically at startup as ordered, transactional migrations recorded in `schema_migrations`. Existing v0.1 databases are upgraded in place; back up `data/email_agent.db` before upgrading if it contains important local drafts.
+
 ## Tests
 
 ```bash
