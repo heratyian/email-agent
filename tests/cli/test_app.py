@@ -68,9 +68,6 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["drafts", "delete"],
         ["message"],
         ["message", "show"],
-        ["message", "done"],
-        ["message", "snooze"],
-        ["message", "reopen"],
         ["account"],
         ["account", "add"],
         ["account", "validate"],
@@ -126,14 +123,14 @@ def test_inbox_help_describes_the_combined_workflow():
 
     assert result.exit_code == 0
     assert all(option in result.output for option in ("--watch", "--dry-run", "--reorganize"))
-    assert all(option in result.output for option in ("--snoozed", "--done", "--all"))
+    assert all(option not in result.output for option in ("--snoozed", "--done", "--all"))
 
 
 def test_nested_commands_are_discoverable():
     expectations = {
         "account": ("add", "validate"),
         "drafts": ("show", "review", "upload", "delete"),
-        "message": ("show", "done", "snooze", "reopen"),
+        "message": ("show",),
     }
     for group, commands in expectations.items():
         result = runner.invoke(app, [group, "--help"])

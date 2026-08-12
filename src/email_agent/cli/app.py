@@ -7,7 +7,6 @@ import typer
 from typer.core import TyperGroup
 
 from email_agent.cli.logging import configure_logging, warn_model_tracing
-from email_agent.cli.parsing import parse_snooze
 from email_agent.cli.rendering import (
     GROUP_COLORS,
     category_name,
@@ -245,7 +244,6 @@ def _refresh_inbox(
                 subject=f"{result.message.subject}: {result.error}",
                 category=None,
                 draft_ready=False,
-                state="failed",
                 color=typer.colors.RED,
             )
         else:
@@ -282,12 +280,11 @@ def _render_inbox(
     runtime: AccountRuntime,
     limit: int,
     unread: bool,
-    attention: str,
     processed_count: int = 0,
 ) -> None:
     """Render the prioritized mailbox view after refresh."""
     items = InboxService(runtime.provider, runtime.agents, runtime.database).list(
-        limit, unread_only=unread, attention=attention
+        limit, unread_only=unread
     )
     if not items and processed_count:
         typer.echo("\nNew messages are shown above; organized messages may have moved from Inbox.")
@@ -305,7 +302,6 @@ def _render_inbox(
                 subject=item.message.subject,
                 category=item.classification.category,
                 draft_ready=item.draft_ready,
-                state=item.attention_state,
                 color=GROUP_COLORS[group],
             )
 
@@ -316,13 +312,6 @@ def inbox(
     limit: int = 20,
     unread: Annotated[
         bool, typer.Option("--unread", help="Show only provider-unread messages.")
-    ] = False,
-    snoozed: Annotated[
-        bool, typer.Option("--snoozed", help="Show messages deferred until later.")
-    ] = False,
-    done: Annotated[bool, typer.Option("--done", help="Show handled messages.")] = False,
-    all_messages: Annotated[
-        bool, typer.Option("--all", help="Show open, snoozed, and done messages.")
     ] = False,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Classify without changing the mailbox or drafting.")
@@ -338,22 +327,17 @@ def inbox(
 ):
     """Prioritize new mail, organize it, and prepare replies.
 
-    The default view contains messages that still need attention. Category says
-    what a message is, priority controls its position, and Draft ready means the
-    assistant prepared a reply. Use --done, --snoozed, or --all for other views.
+    Category says what a message is, priority controls its position, and Draft
+    ready means the assistant prepared a reply.
     """
     account_id = _account_id(account)
-    selected = sum((snoozed, done, all_messages))
-    if selected > 1:
-        raise typer.BadParameter("Use only one of --snoozed, --done, or --all")
-    attention = "all" if all_messages else "snoozed" if snoozed else "done" if done else "open"
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
     runtime = _runtime(account_id)
     try:
         while True:
             processed_count = _refresh_inbox(runtime, account_id, limit, dry_run, reorganize)
-            _render_inbox(runtime, limit, unread, attention, processed_count)
+            _render_inbox(runtime, limit, unread, processed_count)
             if not watch:
                 break
             typer.echo(f"\nWatching every {interval}s. Ctrl-C to stop.")
@@ -395,7 +379,6 @@ def show_message(message_id: int):
     if classification:
         typer.echo(f"\nCategory: {category_name(classification['category'])}")
         typer.echo(f"Priority: {classification['priority'].upper()}")
-        typer.echo(f"Attention: {details.attention_state.title()}")
         typer.echo(f"Confidence: {classification['confidence']:.2f}")
         typer.echo(f"Summary: {classification['summary']}")
         if classification.get("requires_escalation"):
@@ -487,55 +470,3 @@ def review(account: Annotated[str | None, typer.Option()] = None):
             typer.secho("✓ Deleted suggestion.", fg=typer.colors.GREEN)
         else:
             typer.echo("Kept for later.")
-
-
-@message_app.command()
-def done(
-    message_id: Annotated[int, typer.Argument(help="Local message ID.")],
-    delete_draft: Annotated[
-        bool,
-        typer.Option(
-            "--delete-draft",
-            help="Also delete an untouched generated draft; reviewed drafts are preserved.",
-        ),
-    ] = False,
-):
-    """Mark a message handled here or in another channel."""
-    try:
-        result = MessageService(Settings()).done(message_id, delete_draft=delete_draft)
-    except LookupError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    typer.secho(f"✓ Marked “{result.subject}” done.", fg=typer.colors.GREEN, bold=True)
-    typer.echo("The email remains in your mailbox.")
-    if result.deleted_drafts:
-        typer.echo("Deleted the untouched generated draft.")
-
-
-@message_app.command()
-def snooze(
-    message_id: Annotated[int, typer.Argument(help="Local message ID.")],
-    until: Annotated[
-        str, typer.Option(help="When to reopen: tomorrow, YYYY-MM-DD, or ISO datetime.")
-    ],
-):
-    """Hide a message from the open inbox until a later time."""
-    try:
-        wake_at = parse_snooze(until)
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    try:
-        result = MessageService(Settings()).snooze(message_id, wake_at)
-    except (LookupError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    typer.secho(f"✓ Snoozed “{result.subject}”.", fg=typer.colors.GREEN, bold=True)
-    typer.echo(f"Returns to Open at {wake_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}.")
-
-
-@message_app.command()
-def reopen(message_id: Annotated[int, typer.Argument(help="Local message ID.")]):
-    """Return a done or snoozed message to the open inbox."""
-    try:
-        result = MessageService(Settings()).reopen(message_id)
-    except LookupError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-    typer.secho(f"✓ Reopened “{result.subject}”.", fg=typer.colors.GREEN, bold=True)

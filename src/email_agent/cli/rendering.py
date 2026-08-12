@@ -15,7 +15,6 @@ INBOX_COLUMNS = (
     ("SUBJECT", 42),
     ("CATEGORY", 24),
     ("DRAFT", 7),
-    ("STATE", 8),
 )
 
 
@@ -60,7 +59,6 @@ def inbox_table_row(
     subject: str,
     category: str | None,
     draft_ready: bool,
-    state: str,
     color: str | None = None,
 ) -> None:
     """Render one aligned inbox row with predictable user-facing fields."""
@@ -71,7 +69,6 @@ def inbox_table_row(
         subject,
         category_name(category),
         "READY" if draft_ready else "—",
-        state.upper(),
     )
     typer.secho(
         "  ".join(_cell(value, width) for value, (_, width) in zip(values, INBOX_COLUMNS)),
@@ -88,6 +85,5 @@ def render_processed(result) -> None:
         subject=result.message.subject,
         category=result.classification.category,
         draft_ready=result.draft is not None,
-        state="new",
         color=priority_color(result.classification.priority),
     )

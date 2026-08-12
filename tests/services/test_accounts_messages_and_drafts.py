@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from email_agent.config import Settings
 from email_agent.db import Database
@@ -59,19 +59,12 @@ def test_account_service_validates_prompt_files(tmp_path):
     assert AccountService(tmp_path).validate() == ["person@example.com"]
 
 
-def test_message_service_manages_attention_and_retrieves_provider_message(tmp_path, monkeypatch):
+def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
     settings = write_settings(tmp_path)
     database = Database(settings.database_path)
     source = message()
     local_id = database.save_triage(source, classification())
     service = MessageService(settings, database)
-
-    assert service.done(local_id).subject == "Question"
-    assert database.attention_state(local_id) == "done"
-    service.snooze(local_id, datetime.now(UTC) + timedelta(days=1))
-    assert database.attention_state(local_id) == "snoozed"
-    service.reopen(local_id)
-    assert database.attention_state(local_id) == "open"
 
     class Provider:
         def get_message(self, provider_id, mailbox):

@@ -22,13 +22,12 @@ PRIORITY_GROUP_ORDER = (PriorityGroup.URGENT, PriorityGroup.NORMAL, PriorityGrou
 
 @dataclass(frozen=True)
 class TriagedEmail:
-    """A mailbox message with its classification and workflow state."""
+    """A mailbox message with its classification and draft state."""
 
     local_id: int
     message: EmailMessage
     classification: EmailClassification
     group: PriorityGroup
-    attention_state: str
     draft_ready: bool
 
 
@@ -42,7 +41,7 @@ def inbox_group(classification: EmailClassification) -> PriorityGroup:
 
 
 class InboxService:
-    """Fetch, classify, and filter the assistant's inbox view."""
+    """Fetch and classify the assistant's prioritized inbox view."""
 
     def __init__(self, provider, agents, database):
         self.provider = provider
@@ -54,7 +53,6 @@ class InboxService:
         limit: int = 20,
         *,
         unread_only: bool = False,
-        attention: str = "open",
     ) -> list[TriagedEmail]:
         if limit < 1:
             return []
@@ -71,19 +69,14 @@ class InboxService:
                 classification = self.agents.classify(message, thread)
                 local_id = self.database.save_triage(message, classification)
                 logger.info("Classified local message %s as %s", local_id, classification.category)
-            state = self.database.attention_state(local_id)
-            if attention != "all" and state != attention:
-                logger.debug("Filtered local message %s with attention state %s", local_id, state)
-                continue
             results.append(
                 TriagedEmail(
                     local_id=local_id,
                     message=message,
                     classification=classification,
                     group=inbox_group(classification),
-                    attention_state=state,
                     draft_ready=self.database.has_draft(local_id),
                 )
             )
-        logger.info("Returning %d messages in the %s view", len(results), attention)
+        logger.info("Returning %d prioritized inbox messages", len(results))
         return results

@@ -50,15 +50,9 @@ uv run email-agent account
 ```bash
 uv run email-agent inbox --account you@gmail.com
 uv run email-agent inbox --account you@gmail.com --unread
-uv run email-agent inbox --account you@gmail.com --snoozed
-uv run email-agent inbox --account you@gmail.com --done
-uv run email-agent inbox --account you@gmail.com --all
 uv run email-agent inbox --account you@gmail.com --dry-run
 uv run email-agent inbox --account you@gmail.com --reorganize
 uv run email-agent inbox --account you@gmail.com --watch
-uv run email-agent message done 1
-uv run email-agent message snooze 1 --until tomorrow
-uv run email-agent message reopen 1
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts show 1
@@ -95,10 +89,6 @@ uv run email-agent inbox --account you@gmail.com -v --trace-model
 - **Priority** (`urgent`, `normal`, or `low`) controls its inbox section.
 - **Draft ready** means the assistant recommends replying and prepared a draft.
 
-The default inbox shows messages that still need attention. `message done LOCAL_ID` records that you handled one—possibly by phone, Slack, or another channel—without changing the email in the provider. `message snooze LOCAL_ID --until ...` hides it until later, and `message reopen LOCAL_ID` returns it to the open inbox. Use `--done`, `--snoozed`, or `--all` to change the view. Snooze accepts `tomorrow`, an ISO date, or an ISO datetime.
-
-`message done --delete-draft` also removes an untouched generated draft. Uploaded drafts are always preserved in the mailbox. Read/unread status and internal processing bookkeeping remain separate and are not exposed as workflow concepts.
-
 `inbox` handles each message independently. A model, mailbox, or storage error is reported for that message while the rest of the batch continues. Classification and draft results are saved before mailbox changes, and a message is marked processed only after synchronization succeeds; failed messages remain eligible for the next run without creating duplicate drafts. Add `--watch` to keep checking, `--dry-run` to classify without changing the mailbox or generating drafts, or `--reorganize` after changing category definitions.
 
 ### Categories and mailbox organization
@@ -117,9 +107,9 @@ The category key is the exact lowercase Gmail label or IMAP folder path. Use `tr
 
 IMAP accounts default to copying messages into category folders. Safe replacement requires the server's standard `UIDPLUS` support so the agent can track the copied message. Set `category_action: move` on the account to remove categorized messages from Inbox instead; move mode additionally requires the server's `MOVE` capability. The agent will refuse unsafe fallback behavior. Gmail accounts must omit this setting because labels do not copy messages.
 
-Messages that do not clearly fit a configured category remain `Uncategorized`. They still receive a priority, summary, reply recommendation, and attention state, but no Gmail label or IMAP folder is applied.
+Messages that do not clearly fit a configured category remain `Uncategorized`. They still receive a priority, summary, and reply recommendation, but no Gmail label or IMAP folder is applied.
 
-`accounts.yaml` is the only category-routing authority; obsolete names are never translated implicitly. After changing the configured taxonomy, use `inbox --reorganize` to reclassify and resync recent stored messages. Reclassification preserves each message's open, snoozed, or done state.
+`accounts.yaml` is the only category-routing authority; obsolete names are never translated implicitly. After changing the configured taxonomy, use `inbox --reorganize` to reclassify and resync recent stored messages.
 
 Gmail organization and draft upload require the `gmail.modify` and `gmail.compose` OAuth scopes. Existing Gmail users must remove or move their configured token file once and run a command again to grant expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
 
@@ -127,7 +117,7 @@ Gmail organization and draft upload require the `gmail.modify` and `gmail.compos
 
 ## Architecture
 
-The code is grouped by responsibility: `config/` defines and loads account configuration, `providers/` contains Gmail and IMAP adapters, `db/` owns SQLite persistence and migrations, `services/` implements application workflows, `ai/` owns model construction, prompts, and LangChain interactions, and `cli/` contains the Typer application, terminal logging, parsing, and rendering. Process-wide model-trace state lives in `diagnostics.py` so AI code does not depend on CLI formatting. `RuntimeFactory` builds typed dependencies for account commands, while `cli/app.py` declares commands and delegates their work. Shared email models and category rules remain outside AI because providers, storage, and services also use them. Sending is not implemented, so generated replies always remain local drafts for review.
+The code is grouped by responsibility: `config/` defines and loads account configuration, `providers/` contains Gmail and IMAP adapters, `db/` owns SQLite persistence and migrations, `services/` implements application workflows, `ai/` owns model construction, prompts, and LangChain interactions, and `cli/` contains the Typer application, terminal logging, and rendering. Process-wide model-trace state lives in `diagnostics.py` so AI code does not depend on CLI formatting. `RuntimeFactory` builds typed dependencies for account commands, while `cli/app.py` declares commands and delegates their work. Shared email models and category rules remain outside AI because providers, storage, and services also use them. Sending is not implemented, so generated replies always remain local drafts for review.
 
 SQLite schema changes are applied automatically at startup as ordered, transactional migrations recorded in `schema_migrations`. Existing v0.1 databases are upgraded in place; back up `data/email_agent.db` before upgrading if it contains important local drafts.
 

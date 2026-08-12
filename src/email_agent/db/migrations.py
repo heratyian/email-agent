@@ -53,7 +53,7 @@ def _v1_base(db: sqlite3.Connection) -> None:
 
 
 def _v2_attention_workflow(db: sqlite3.Connection) -> None:
-    """Add inbox triage timestamps and the open/snoozed/done workflow."""
+    """Preserve the historical v2 schema for existing database upgrades."""
     _add_column(db, "messages", "triaged_at TEXT")
     db.execute("UPDATE messages SET triaged_at=COALESCE(triaged_at, processed_at, CURRENT_TIMESTAMP)")
     _add_column(db, "messages", "attention_state TEXT NOT NULL DEFAULT 'open'")
