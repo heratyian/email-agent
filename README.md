@@ -56,6 +56,7 @@ uv run email-agent inbox --account you@gmail.com --watch
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts show 1
+uv run email-agent drafts generate 1
 uv run email-agent drafts review --account you@gmail.com
 uv run email-agent drafts upload 1
 uv run email-agent drafts delete 1
@@ -113,7 +114,7 @@ Messages that do not clearly fit a configured category remain `Uncategorized`. T
 
 Gmail organization and draft upload require the `gmail.modify` and `gmail.compose` OAuth scopes. Existing Gmail users must remove or move their configured token file once and run a command again to grant expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
 
-`drafts review` cycles through suggestions, showing the original mailbox message beside each suggested reply. Upload saves a real draft in Gmail or the IMAP Drafts folder and removes it from the local review queue; it never sends email. Delete dismisses the local suggestion without changing the mailbox. Raw email bodies are not persisted; review and `message show` retrieve the current body from the mailbox using the stored provider ID.
+`drafts generate LOCAL_ID` creates a reply suggestion for a specific message, even when the original classification did not recommend replying. Running it again replaces the local suggestion. `drafts review` cycles through suggestions, showing the original mailbox message beside each suggested reply. Upload saves a real draft in Gmail or the IMAP Drafts folder and removes it from the local review queue; it never sends email. Delete dismisses the local suggestion without changing the mailbox. Raw email bodies are not persisted; review and `message show` retrieve the current body from the mailbox using the stored provider ID.
 
 ## Architecture
 

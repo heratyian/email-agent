@@ -243,6 +243,43 @@ class Database:
                 (message_id,),
             ).fetchone()
 
+    def replace_generated_draft(
+        self,
+        message_id: int,
+        account_id: str,
+        source_message_id: str,
+        reply: DraftReply,
+    ) -> Draft:
+        """Replace the local review suggestion without touching uploaded drafts."""
+        draft = Draft(
+            account_id=account_id,
+            source_message_id=source_message_id,
+            to=[reply.recipient],
+            subject=reply.subject,
+            body=reply.body,
+        )
+        with self.connect() as db:
+            db.execute("DELETE FROM drafts WHERE message_id=? AND status='generated'", (message_id,))
+            db.execute(
+                """INSERT INTO drafts(
+                       id, message_id, account_id, source_message_id, recipient,
+                       subject, body, status, metadata, created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    str(draft.id),
+                    message_id,
+                    account_id,
+                    source_message_id,
+                    reply.recipient,
+                    reply.subject,
+                    reply.body,
+                    draft.status,
+                    reply.model_dump_json(),
+                    draft.created_at.isoformat(),
+                ),
+            )
+        return draft
+
     def show_message(self, message_id: int) -> sqlite3.Row | None:
         with self.connect() as db:
             return db.execute(

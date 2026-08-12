@@ -1,7 +1,9 @@
+import json
 import logging
 
 from email_agent.config import Settings
 from email_agent.db import Database
+from email_agent.models import EmailClassification
 from email_agent.providers import create_mail_provider
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,32 @@ class DraftService:
         return provider.get_message(
             message_row["provider_uid"], message_row["provider_mailbox"]
         )
+
+    def generate(self, message_id: int, provider, agents):
+        """Generate or replace a local reply suggestion for one tracked message."""
+        message_row = self.database.show_message(message_id)
+        if not message_row:
+            raise LookupError("message not found")
+        if not message_row["classification"]:
+            raise LookupError("message has not been classified")
+        source = provider.get_message(
+            message_row["provider_uid"], message_row["provider_mailbox"]
+        )
+        thread = provider.get_thread(
+            message_row["provider_uid"], message_row["provider_mailbox"]
+        )
+        classification = EmailClassification.model_validate(
+            json.loads(message_row["classification"])
+        )
+        reply = agents.draft(source, thread, classification)
+        draft = self.database.replace_generated_draft(
+            message_id,
+            message_row["account_id"],
+            message_row["provider_message_id"],
+            reply,
+        )
+        logger.info("Generated draft suggestion for local message %s", message_id)
+        return draft
 
     def upload(self, message_id: int) -> str:
         """Upload one suggestion to its mailbox Drafts folder without sending."""

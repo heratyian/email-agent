@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from email_agent.config import Settings
 from email_agent.db import Database
-from email_agent.models import DraftReply, EmailClassification, EmailMessage
+from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
 
@@ -132,3 +132,40 @@ def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
 
     assert service.get(1)["status"] == "rejected"
     assert service.list() == []
+
+
+def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
+    database = Database(tmp_path / "email-agent.db")
+    source = message()
+    local_id = database.save_triage(source, classification())
+
+    class Provider:
+        def get_message(self, provider_id, mailbox):
+            return source
+
+        def get_thread(self, provider_id, mailbox):
+            return EmailThread(messages=[source])
+
+    class Agents:
+        calls = 0
+
+        def draft(self, message, thread, stored_classification):
+            self.calls += 1
+            return DraftReply(
+                recipient=message.from_address,
+                subject="Re: Question",
+                body=f"Generated answer {self.calls}.",
+                reasoning_summary="Answer the question.",
+                confidence=0.9,
+            )
+
+    agents = Agents()
+    service = DraftService(database)
+
+    first = service.generate(local_id, Provider(), agents)
+    second = service.generate(local_id, Provider(), agents)
+
+    assert first.body == "Generated answer 1."
+    assert second.body == "Generated answer 2."
+    assert service.get(local_id)["body"] == "Generated answer 2."
+    assert len(service.list()) == 1

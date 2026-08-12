@@ -63,6 +63,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["inbox"],
         ["drafts"],
         ["drafts", "show"],
+        ["drafts", "generate"],
         ["drafts", "review"],
         ["drafts", "upload"],
         ["drafts", "delete"],
@@ -129,7 +130,7 @@ def test_inbox_help_describes_the_combined_workflow():
 def test_nested_commands_are_discoverable():
     expectations = {
         "account": ("add", "validate"),
-        "drafts": ("show", "review", "upload", "delete"),
+        "drafts": ("show", "generate", "review", "upload", "delete"),
         "message": ("show",),
     }
     for group, commands in expectations.items():

@@ -404,6 +404,24 @@ def show_draft(message_id: int):
 
 
 @drafts_app.command()
+def generate(message_id: Annotated[int, typer.Argument(help="Local message ID.")]):
+    """Generate or regenerate a reply suggestion for one message."""
+    settings = Settings()
+    database = Database(settings.database_path)
+    message_row = database.show_message(message_id)
+    if not message_row:
+        raise typer.BadParameter("message not found")
+    runtime = _runtime(message_row["account_id"])
+    try:
+        draft = DraftService(database).generate(message_id, runtime.provider, runtime.agents)
+    except (LookupError, RuntimeError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho(f"✓ Draft ready for message #{message_id}.", fg=typer.colors.GREEN, bold=True)
+    typer.echo(f"To: {draft.to[0]}\nSubject: {draft.subject}")
+    typer.echo("Review it with: email-agent drafts review")
+
+
+@drafts_app.command()
 def upload(message_id: int):
     """Upload a suggestion to the mailbox Drafts folder without sending."""
     settings = Settings()
