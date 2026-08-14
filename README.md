@@ -1,6 +1,6 @@
 # Email Agent
 
-An account-configured Python/LangChain email assistant that retrieves mail, classifies it with validated structured output, and generates reviewable drafts. It never sends email.
+Python/LangChain email assistant that retrieves unread mail, classifies it with validated structured output, and generates reviewable draft replies.
 
 ## Quick start
 
