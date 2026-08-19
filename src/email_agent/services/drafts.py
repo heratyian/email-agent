@@ -50,7 +50,7 @@ class DraftService:
             message_row["provider_uid"], message_row["provider_mailbox"]
         )
 
-    def generate(self, message_id: int, provider, agents):
+    def generate(self, message_id: int, provider, agents, instruction: str | None = None):
         """Generate or replace a local reply suggestion for one tracked message."""
         message_row = self.database.show_message(message_id)
         if not message_row:
@@ -66,7 +66,10 @@ class DraftService:
         classification = EmailClassification.model_validate(
             json.loads(message_row["classification"])
         )
-        reply = agents.draft(source, thread, classification)
+        if instruction:
+            reply = agents.draft(source, thread, classification, instruction=instruction)
+        else:
+            reply = agents.draft(source, thread, classification)
         draft = self.database.replace_generated_draft(
             message_id,
             message_row["account_id"],

@@ -65,12 +65,18 @@ class EmailAgents:
         return classification
 
     def draft(
-        self, message: EmailMessage, thread: EmailThread, classification: EmailClassification
+        self,
+        message: EmailMessage,
+        thread: EmailThread,
+        classification: EmailClassification,
+        instruction: str | None = None,
     ) -> DraftReply:
         content = (
             f"Classification:\n{classification.model_dump_json(indent=2)}\n\n"
             f"Conversation:\n{format_thread(thread, message)}"
         )
+        if instruction:
+            content += f"\n\nOne-time drafting guidance:\n{instruction.strip()}"
         logger.info(
             "Starting draft generation with %s:%s",
             self.agent.model.provider,

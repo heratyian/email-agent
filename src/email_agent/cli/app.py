@@ -6,13 +6,16 @@ from typing import Annotated
 import typer
 from typer.core import TyperGroup
 
+from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
     GROUP_COLORS,
     category_name,
     inbox_table_header,
     inbox_table_row,
+    render_inbox_items,
     render_processed,
+    render_processing_results,
 )
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.db import Database
@@ -29,7 +32,6 @@ from email_agent.services import (
     AccountService,
     DraftService,
     InboxService,
-    MessageService,
     OrganizationService,
     OrganizationStatus,
     ProcessingFailure,
@@ -61,7 +63,7 @@ class GlobalOptionsAnywhereGroup(TyperGroup):
 
 app = typer.Typer(
     cls=GlobalOptionsAnywhereGroup,
-    no_args_is_help=True,
+    invoke_without_command=True,
     help="Safe, account-configured email triage and drafting.",
     epilog="""
 Getting started:
@@ -83,6 +85,7 @@ app.add_typer(message_app, name="message")
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     verbose: Annotated[
         int,
         typer.Option(
@@ -105,6 +108,10 @@ def main(
     configure_model_tracing(trace_model)
     if trace_model:
         warn_model_tracing()
+    if ctx.invoked_subcommand is None:
+        from email_agent.cli.shell import run_shell
+
+        run_shell(verbosity=verbose, trace_model=trace_model)
 
 def _runtime(account_id: str, *, with_agents: bool = True) -> AccountRuntime:
     """Build typed dependencies for one CLI account command."""
@@ -333,11 +340,18 @@ def inbox(
     account_id = _account_id(account)
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
-    runtime = _runtime(account_id)
     try:
         while True:
-            processed_count = _refresh_inbox(runtime, account_id, limit, dry_run, reorganize)
-            _render_inbox(runtime, limit, unread, processed_count)
+            if not dry_run and not reorganize and not unread:
+                result = CommandHandlers().run_inbox(account_id, limit)
+                processed_count = render_processing_results(result.processed)
+                render_inbox_items(result.items)
+            else:
+                runtime = _runtime(account_id)
+                processed_count = _refresh_inbox(
+                    runtime, account_id, limit, dry_run, reorganize
+                )
+                _render_inbox(runtime, limit, unread, processed_count)
             if not watch:
                 break
             typer.echo(f"\nWatching every {interval}s. Ctrl-C to stop.")
@@ -368,7 +382,7 @@ def drafts(ctx: typer.Context, account: Annotated[str | None, typer.Option()] = 
 def show_message(message_id: int):
     """Retrieve and show a mailbox message using its local database ID."""
     try:
-        details = MessageService(Settings()).show(message_id)
+        details = CommandHandlers().show_message(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     message, classification = details.message, details.classification
@@ -404,16 +418,15 @@ def show_draft(message_id: int):
 
 
 @drafts_app.command()
-def generate(message_id: Annotated[int, typer.Argument(help="Local message ID.")]):
+def generate(
+    message_id: Annotated[int, typer.Argument(help="Local message ID.")],
+    instruction: Annotated[
+        str | None, typer.Option(help="One-time guidance for this draft only.")
+    ] = None,
+):
     """Generate or regenerate a reply suggestion for one message."""
-    settings = Settings()
-    database = Database(settings.database_path)
-    message_row = database.show_message(message_id)
-    if not message_row:
-        raise typer.BadParameter("message not found")
-    runtime = _runtime(message_row["account_id"])
     try:
-        draft = DraftService(database).generate(message_id, runtime.provider, runtime.agents)
+        draft = CommandHandlers().generate_draft(message_id, instruction)
     except (LookupError, RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho(f"✓ Draft ready for message #{message_id}.", fg=typer.colors.GREEN, bold=True)
@@ -424,9 +437,8 @@ def generate(message_id: Annotated[int, typer.Argument(help="Local message ID.")
 @drafts_app.command()
 def upload(message_id: int):
     """Upload a suggestion to the mailbox Drafts folder without sending."""
-    settings = Settings()
     try:
-        DraftService(Database(settings.database_path), settings).upload(message_id)
+        CommandHandlers().upload_draft(message_id)
     except (LookupError, RuntimeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN, bold=True)
@@ -435,9 +447,8 @@ def upload(message_id: int):
 @drafts_app.command("delete")
 def delete_draft(message_id: int):
     """Delete a local draft suggestion without changing the mailbox."""
-    settings = Settings()
     try:
-        DraftService(Database(settings.database_path)).delete(message_id)
+        CommandHandlers().delete_draft(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho("✓ Deleted draft suggestion.", fg=typer.colors.GREEN, bold=True)
