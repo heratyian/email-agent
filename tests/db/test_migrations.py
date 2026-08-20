@@ -67,6 +67,7 @@ def test_original_database_is_upgraded_without_losing_message_or_run(tmp_path):
     assert message["provider_uid"] == "provider-7"
     assert message["provider_mailbox"] == "INBOX"
     assert message["triaged_at"] == message["processed_at"]
+    assert message["classified_at"] == message["processed_at"]
     assert run["account_id"] == "person@example.com"
     assert run["model"] == "openai:test"
     assert "agent_version" not in run

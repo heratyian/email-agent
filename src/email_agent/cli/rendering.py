@@ -2,14 +2,8 @@ import typer
 
 from email_agent.db import StoredDraft
 from email_agent.models import EmailMessage
-from email_agent.services import PRIORITY_GROUP_ORDER, PriorityGroup, ProcessingFailure
+from email_agent.services import ClassificationFailure
 from email_agent.services.messages import MessageDetails
-
-GROUP_COLORS = {
-    PriorityGroup.URGENT: typer.colors.BRIGHT_RED,
-    PriorityGroup.NORMAL: typer.colors.CYAN,
-    PriorityGroup.LOW: typer.colors.BRIGHT_BLACK,
-}
 
 INBOX_COLUMNS = (
     ("ID", 6),
@@ -79,26 +73,34 @@ def inbox_table_row(
     )
 
 
-def render_processed(result) -> None:
-    """Render one successfully processed message as an inbox table row."""
-    inbox_table_row(
-        local_id=result.local_id,
-        priority=result.classification.priority,
-        sender=result.message.from_name or result.message.from_address,
-        subject=result.message.subject,
-        category=result.classification.category,
-        draft_ready=result.draft is not None,
-        color=priority_color(result.classification.priority),
-    )
-
-
-def render_processing_results(results) -> int:
-    """Render isolated processing successes and failures; return success count."""
-    if results:
-        typer.secho("\nProcessed mail", bold=True)
+def render_inbox_items(items) -> None:
+    """Render a newest-first inbox with any existing assistant state."""
+    typer.echo(f"\nInbox · {len(items)} messages")
+    if items:
         inbox_table_header()
+    for item in items:
+        classification = item.classification
+        priority = classification.priority if classification else "—"
+        inbox_table_row(
+            local_id=item.local_id,
+            priority=priority,
+            sender=item.message.from_name or item.message.from_address,
+            subject=item.message.subject,
+            category=classification.category if classification else None,
+            draft_ready=item.draft_ready,
+            color=priority_color(priority) if classification else None,
+        )
+
+
+def render_classification_results(results) -> int:
+    """Render classification successes and isolated failures."""
+    if not results:
+        typer.echo("No unclassified messages.")
+        return 0
+    inbox_table_header()
+    succeeded = 0
     for result in results:
-        if isinstance(result, ProcessingFailure):
+        if isinstance(result, ClassificationFailure):
             inbox_table_row(
                 local_id=result.local_id or "?",
                 priority="error",
@@ -108,58 +110,24 @@ def render_processing_results(results) -> int:
                 draft_ready=False,
                 color=typer.colors.RED,
             )
-        else:
-            render_processed(result)
-    succeeded = [item for item in results if not isinstance(item, ProcessingFailure)]
-    if results:
-        drafts = sum(item.draft is not None for item in succeeded)
-        failures = len(results) - len(succeeded)
-        typer.secho(
-            f"Processed {len(succeeded)} · {drafts} drafts ready · {failures} failed",
-            fg=typer.colors.RED if failures else typer.colors.GREEN,
-            bold=True,
+            continue
+        succeeded += 1
+        inbox_table_row(
+            local_id=result.local_id,
+            priority=result.classification.priority,
+            sender=result.message.from_name or result.message.from_address,
+            subject=result.message.subject,
+            category=result.classification.category,
+            draft_ready=result.draft_ready,
+            color=priority_color(result.classification.priority),
         )
-    return len(succeeded)
-
-
-def render_processing_summary(results) -> int:
-    """Summarize one refresh while keeping isolated failures visible."""
-    succeeded = [item for item in results if not isinstance(item, ProcessingFailure)]
-    failures = [item for item in results if isinstance(item, ProcessingFailure)]
-    drafts = sum(item.draft is not None for item in succeeded)
-    message_label = "message" if len(succeeded) == 1 else "messages"
-    draft_label = "draft" if drafts == 1 else "drafts"
+    failures = len(results) - succeeded
     typer.secho(
-        f"Processed {len(succeeded)} new {message_label} · {drafts} {draft_label} ready · "
-        f"{len(failures)} failed",
+        f"Classified {succeeded} · {failures} failed",
         fg=typer.colors.RED if failures else typer.colors.GREEN,
         bold=True,
     )
-    for failure in failures:
-        local_id = failure.local_id or "?"
-        typer.secho(
-            f"  Message #{local_id} ({failure.message.subject}): {failure.error}",
-            fg=typer.colors.RED,
-        )
-    return len(succeeded)
-
-
-def render_inbox_items(items) -> None:
-    """Render an already-prioritized collection of inbox items."""
-    typer.echo(f"\nPrioritized inbox · {len(items)} messages")
-    if items:
-        inbox_table_header()
-    for group in PRIORITY_GROUP_ORDER:
-        for item in (entry for entry in items if entry.group is group):
-            inbox_table_row(
-                local_id=item.local_id,
-                priority=item.classification.priority,
-                sender=item.message.from_name or item.message.from_address,
-                subject=item.message.subject,
-                category=item.classification.category,
-                draft_ready=item.draft_ready,
-                color=GROUP_COLORS[group],
-            )
+    return succeeded
 
 
 def render_message_details(details: MessageDetails, *, show_confidence: bool = True) -> None:

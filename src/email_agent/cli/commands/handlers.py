@@ -9,26 +9,21 @@ from email_agent.models import Draft, EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.services import (
     AccountService,
+    ClassificationFailure,
+    ClassificationService,
+    ClassifiedEmail,
     DraftService,
+    InboxItem,
     InboxService,
     MessageDetails,
     MessageService,
-    OrganizationReport,
-    OrganizationService,
-    ProcessedEmail,
-    ProcessingFailure,
-    ProcessingService,
-    TriagedEmail,
 )
 
 
 @dataclass(frozen=True)
 class InboxResult:
     runtime: AccountRuntime
-    processed: list[ProcessedEmail | ProcessingFailure]
-    items: list[TriagedEmail]
-    organization: OrganizationReport | None = None
-    dry_run: bool = False
+    items: list[InboxItem]
 
 
 @dataclass
@@ -95,10 +90,8 @@ class CommandHandlers:
 
     def inbox_items(
         self, runtime: AccountRuntime, limit: int, *, unread: bool = False
-    ) -> list[TriagedEmail]:
-        return InboxService(runtime.provider, runtime.require_agents(), runtime.database).list(
-            limit, unread_only=unread
-        )
+    ) -> list[InboxItem]:
+        return InboxService(runtime.provider, runtime.database).list(limit, unread_only=unread)
 
     def run_inbox(
         self,
@@ -106,27 +99,28 @@ class CommandHandlers:
         limit: int,
         *,
         unread: bool = False,
-        dry_run: bool = False,
-        reorganize: bool = False,
     ) -> InboxResult:
-        runtime = self.runtime(account_id)
-        processed = []
-        if not dry_run:
-            processed = ProcessingService(
-                account_id,
-                runtime.account.agent,
-                runtime.provider,
-                runtime.require_agents(),
-                runtime.database,
-            ).process(limit)
-        organization = None
-        if reorganize and not dry_run:
-            organization = OrganizationService(
-                account_id,
-                runtime.account,
-                runtime.provider,
-                runtime.database,
-                runtime.require_agents(),
-            ).run(limit=limit, force=True, reclassify_all=True)
+        runtime = self.runtime(account_id, with_agents=False)
         items = self.inbox_items(runtime, limit, unread=unread)
-        return InboxResult(runtime, processed, items, organization, dry_run)
+        return InboxResult(runtime, items)
+
+    def classify(
+        self,
+        account_id: str,
+        *,
+        message_id: int | None = None,
+        limit: int = 20,
+        reclassify: bool = False,
+    ) -> list[ClassifiedEmail | ClassificationFailure]:
+        runtime = self.runtime(account_id)
+        service = ClassificationService(
+            runtime.account.agent,
+            runtime.provider,
+            runtime.require_agents(),
+            runtime.database,
+        )
+        if message_id is not None:
+            if self.message_account(message_id) != account_id:
+                raise LookupError(f"message {message_id} does not belong to account {account_id}")
+            return [service.classify_message(message_id)]
+        return service.classify_recent(limit, reclassify=reclassify)

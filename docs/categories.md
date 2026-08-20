@@ -56,7 +56,7 @@ After changing category keys or descriptions, reclassify and synchronize recent
 stored messages:
 
 ```bash
-uv run email-agent inbox --account you@example.com --reorganize
+uv run email-agent classify --account you@example.com --all
 ```
 
 Review the proposed taxonomy before running this command. It can change Gmail

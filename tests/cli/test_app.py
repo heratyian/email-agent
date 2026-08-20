@@ -11,11 +11,14 @@ runner = CliRunner()
 cli = importlib.import_module("email_agent.cli.app")
 
 
-def test_top_level_help_presents_four_user_concepts():
+def test_top_level_help_presents_the_user_workflows():
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    assert all(command in result.output for command in ("inbox", "drafts", "message", "account"))
+    assert all(
+        command in result.output
+        for command in ("inbox", "classify", "drafts", "message", "account")
+    )
     assert all(
         command not in result.output
         for command in ("process  ", "organize  ", "monitor  ", "accounts  ", "config  ")
@@ -61,6 +64,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     "command",
     [
         ["inbox"],
+        ["classify"],
         ["drafts"],
         ["drafts", "show"],
         ["drafts", "generate"],
@@ -119,12 +123,21 @@ def test_multiple_accounts_require_an_explicit_account(monkeypatch):
         cli._account_id(None)
 
 
-def test_inbox_help_describes_the_combined_workflow():
+def test_inbox_help_describes_a_non_ai_mailbox_view():
     result = runner.invoke(app, ["inbox", "--help"])
 
     assert result.exit_code == 0
-    assert all(option in result.output for option in ("--watch", "--dry-run", "--reorganize"))
-    assert all(option not in result.output for option in ("--snoozed", "--done", "--all"))
+    assert "--watch" in result.output
+    assert all(option not in result.output for option in ("--dry-run", "--reorganize", "--all"))
+    assert "without using AI" in result.output
+
+
+def test_classify_help_exposes_explicit_reclassification():
+    result = runner.invoke(app, ["classify", "--help"])
+
+    assert result.exit_code == 0
+    assert "--all" in result.output
+    assert "managed mailbox labels" in result.output
 
 
 def test_nested_commands_are_discoverable():

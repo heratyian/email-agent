@@ -9,11 +9,11 @@ from typer.core import TyperGroup
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
+    render_classification_results,
     render_draft,
     render_draft_list,
     render_inbox_items,
     render_message_details,
-    render_processing_results,
     render_review_item,
 )
 from email_agent.config import PROJECT_ROOT
@@ -24,7 +24,6 @@ from email_agent.generators import (
     CategoryAction,
     ModelProvider,
 )
-from email_agent.services import OrganizationStatus
 
 
 class GlobalOptionsAnywhereGroup(TyperGroup):
@@ -209,23 +208,12 @@ def inbox(
     unread: Annotated[
         bool, typer.Option("--unread", help="Show only provider-unread messages.")
     ] = False,
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Classify without changing the mailbox or drafting.")
-    ] = False,
-    reorganize: Annotated[
-        bool,
-        typer.Option("--reorganize", help="Reclassify and resync recent locally stored messages."),
-    ] = False,
     watch: Annotated[
         bool, typer.Option("--watch", help="Keep checking for new messages.")
     ] = False,
     interval: Annotated[int, typer.Option(help="Seconds between checks when watching.")] = 300,
 ):
-    """Prioritize new mail, organize it, and prepare replies.
-
-    Category says what a message is, priority controls its position, and Draft
-    ready means the assistant prepared a reply.
-    """
+    """Synchronize and show recent mail without using AI."""
     account_id = _account_id(account)
     if interval < 30:
         raise typer.BadParameter("interval must be at least 30 seconds")
@@ -235,28 +223,7 @@ def inbox(
                 account_id,
                 limit,
                 unread=unread,
-                dry_run=dry_run,
-                reorganize=reorganize,
             )
-            if result.dry_run:
-                typer.secho(
-                    "DRY RUN — mailbox labels and drafts will not change",
-                    fg=typer.colors.YELLOW,
-                )
-            render_processing_results(result.processed)
-            if result.organization:
-                for item in result.organization.items:
-                    if item.status is OrganizationStatus.FAILED:
-                        typer.secho(f"{item.local_id}: {item.error}", fg=typer.colors.RED)
-                typer.secho(
-                    f"Reorganized {result.organization.changed}; "
-                    f"{result.organization.failed} failed.",
-                    fg=(
-                        typer.colors.RED
-                        if result.organization.failed
-                        else typer.colors.GREEN
-                    ),
-                )
             render_inbox_items(result.items)
             if not watch:
                 break
@@ -264,6 +231,33 @@ def inbox(
             time.sleep(interval)
     except KeyboardInterrupt:
         typer.echo("Stopped.")
+
+
+@app.command()
+def classify(
+    message_id: Annotated[
+        int | None, typer.Argument(help="Local message ID. Omit to classify recent new mail.")
+    ] = None,
+    account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
+    limit: Annotated[int, typer.Option(help="Maximum recent messages to examine.")] = 20,
+    reclassify: Annotated[
+        bool, typer.Option("--all", help="Reclassify recent messages that already have results.")
+    ] = False,
+):
+    """Classify messages and synchronize their managed mailbox labels."""
+    account_id = _account_id(account)
+    if limit < 1:
+        raise typer.BadParameter("limit must be at least 1")
+    try:
+        results = CommandHandlers().classify(
+            account_id,
+            message_id=message_id,
+            limit=limit,
+            reclassify=reclassify,
+        )
+    except LookupError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    render_classification_results(results)
 
 
 @drafts_app.callback()

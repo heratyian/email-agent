@@ -49,6 +49,7 @@ The same workflows are available as scriptable CLI commands:
 
 ```bash
 uv run email-agent inbox --account you@gmail.com
+uv run email-agent classify --account you@gmail.com
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts generate 1
@@ -59,10 +60,10 @@ uv run email-agent drafts upload 1
 Run `uv run email-agent --help` or add `--help` after a command for the current
 command reference.
 
-The `inbox` command processes each message independently. A failure for one
-message does not stop the remaining batch. Classification and draft data are
-saved before mailbox changes. A message is marked as processed only after mailbox
-synchronization succeeds.
+The `inbox` command only synchronizes and displays recent mail. It does not load
+a model or change mailbox labels. Run `classify` to classify unclassified messages
+and synchronize their managed labels. Generate drafts explicitly for messages
+that need replies.
 
 ## Safety and privacy
 

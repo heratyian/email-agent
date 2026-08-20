@@ -120,6 +120,12 @@ def _v6_simplify_run_audit(db: sqlite3.Connection) -> None:
     db.execute("ALTER TABLE agent_runs_v6 RENAME TO agent_runs")
 
 
+def _v7_classification_completion(db: sqlite3.Connection) -> None:
+    """Track classification independently from the former combined workflow."""
+    _add_column(db, "messages", "classified_at TEXT")
+    db.execute("UPDATE messages SET classified_at=processed_at WHERE processed_at IS NOT NULL")
+
+
 MIGRATIONS: tuple[tuple[int, Migration], ...] = (
     (1, _v1_base),
     (2, _v2_attention_workflow),
@@ -127,6 +133,7 @@ MIGRATIONS: tuple[tuple[int, Migration], ...] = (
     (4, _v4_category_audit),
     (5, _v5_category_replacement),
     (6, _v6_simplify_run_audit),
+    (7, _v7_classification_completion),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

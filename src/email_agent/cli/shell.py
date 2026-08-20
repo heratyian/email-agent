@@ -10,10 +10,10 @@ import typer
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
+    render_classification_results,
     render_draft_list,
     render_inbox_items,
     render_message_details,
-    render_processing_summary,
     render_review_item,
 )
 from email_agent.diagnostics import configure_model_tracing
@@ -124,6 +124,7 @@ class InteractiveShell:
         logger.info("Shell command: %s", command)
         methods = {
             "/inbox": self._inbox,
+            "/classify": self._classify,
             "/show": self._show,
             "/draft": self._draft,
             "/drafts": self._drafts,
@@ -167,8 +168,19 @@ class InteractiveShell:
         account_id = self._active()
         typer.echo(f"Checking {account_id}...")
         result = self.handlers.run_inbox(account_id, limit)
-        render_processing_summary(result.processed)
         render_inbox_items(result.items)
+
+    def _classify(self, args: list[str]) -> None:
+        if len(args) > 1:
+            raise ShellUsageError("/classify [LOCAL_ID]")
+        try:
+            message_id = int(args[0]) if args else None
+        except ValueError as exc:
+            raise ShellUsageError("/classify [LOCAL_ID]") from exc
+        if message_id is not None:
+            self._require_active_message(message_id)
+        results = self.handlers.classify(self._active(), message_id=message_id)
+        render_classification_results(results)
 
     @staticmethod
     def _one_id(args: list[str], usage: str) -> int:
@@ -282,7 +294,8 @@ class InteractiveShell:
 
 
 HELP_TEXT = """Commands:
-  /inbox [limit]                 Refresh and show the prioritized inbox
+  /inbox [limit]                 Synchronize and show recent mail
+  /classify [LOCAL_ID]           Classify new mail or one message
   /show LOCAL_ID                 Show an original message
   /draft LOCAL_ID [instruction]  Generate or regenerate a suggestion
   /drafts                        List pending suggestions

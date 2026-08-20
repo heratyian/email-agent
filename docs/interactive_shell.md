@@ -32,6 +32,7 @@ Type `/help` in the shell for the current command reference.
 
 ```text
 /inbox [limit]
+/classify [LOCAL_ID]
 /show LOCAL_ID
 /draft LOCAL_ID [instruction]
 /drafts
@@ -45,18 +46,31 @@ Type `/help` in the shell for the current command reference.
 /quit
 ```
 
-### Process the inbox
+### Synchronize the inbox
 
-`/inbox` fetches recent messages for the active account, classifies them,
-organizes the mailbox, and prepares suggested replies when appropriate. Pass a
-positive limit to change the default batch size:
+`/inbox` fetches recent messages for the active account and shows them newest
+first. It assigns stable local IDs, but it does not use AI, change mailbox labels,
+or prepare replies. Pass a positive limit to change the default batch size:
 
 ```text
 > /inbox 10
 ```
 
-This command can apply Gmail labels or synchronize IMAP category folders. It is
-an explicit request for those mailbox changes.
+### Classify messages
+
+`/classify` classifies recent messages that do not have a completed
+classification. It saves category, priority, and reply requirements, then
+synchronizes the configured Gmail label or IMAP category folder:
+
+```text
+> /classify
+```
+
+Pass a local ID to classify or reclassify one message:
+
+```text
+> /classify 203
+```
 
 ### Show a message
 
@@ -72,8 +86,8 @@ does not belong to the active account.
 
 ### Generate a draft suggestion
 
-`/draft LOCAL_ID` generates or regenerates a pending local suggestion. Add
-one-time guidance after the ID:
+`/draft LOCAL_ID` generates or regenerates a pending local suggestion from an
+existing classification. Add one-time guidance after the ID:
 
 ```text
 > /draft 203 Politely decline and keep the reply under 50 words.

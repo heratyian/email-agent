@@ -21,6 +21,7 @@ class FakeHandlers:
     ("line", "method", "arguments"),
     [
         ("/inbox 5", "_inbox", ["5"]),
+        ("/classify 12", "_classify", ["12"]),
         ("/show 12", "_show", ["12"]),
         ("/draft 12 keep it short", "_draft", ["12", "keep", "it", "short"]),
         ("/drafts", "_drafts", []),

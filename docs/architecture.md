@@ -29,24 +29,23 @@ Shell command ─┘
 Chat is an interface, not the architecture. The shell does not give a model a
 provider object, database handle, credential, or write-capable tool.
 
-## Message processing sequence
+## Message workflow
 
-Each message is processed independently:
+Inbox synchronization, classification, and drafting are separate operations:
 
-1. Fetch the message and thread from the provider.
-2. Classify the message with validated structured output.
-3. Generate a reply suggestion when classification recommends one.
-4. Save the classification and pending draft locally.
-5. Synchronize the configured category with the provider.
-6. Mark the provider message as processed.
-7. Mark local processing complete and record the run.
+1. `inbox` fetches recent provider messages, assigns stable local IDs, and shows
+   any existing classification or draft state. It does not invoke a model.
+2. `classify` classifies unclassified messages with validated structured output,
+   saves each result, and synchronizes the configured provider category.
+3. `draft` generates a pending local suggestion for one classified message.
+4. Draft upload creates a provider draft only after an explicit command.
 
-The local result is saved before mailbox changes. Local processing is completed
-only after provider synchronization succeeds. A failed message remains eligible
-for a later run. Other messages in the same batch continue processing.
+Classification is completed locally only after provider synchronization succeeds.
+A failed message remains eligible for a later run. Other messages in the same
+batch continue processing.
 
-The workflow is idempotent at the account and provider-message boundary. A retry
-does not create duplicate pending drafts.
+Classification is idempotent at the account and provider-message boundary. Draft
+generation is always explicit and may replace only a pending local suggestion.
 
 ## Draft lifecycle
 

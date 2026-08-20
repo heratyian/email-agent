@@ -60,6 +60,16 @@ class Database:
             ).fetchone()
         return bool(row)
 
+    def classification_completed(self, account_id: str, provider_id: str) -> bool:
+        """Return whether classification and mailbox synchronization completed."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM messages WHERE account_id=? AND provider_message_id=? "
+                "AND classified_at IS NOT NULL",
+                (account_id, provider_id),
+            ).fetchone()
+        return bool(row)
+
     @staticmethod
     def _upsert_message(
         db,
@@ -119,7 +129,13 @@ class Database:
         with self.connect() as db:
             message_id = self._upsert_message(db, message, processed=False)
             self._save_classification(db, message_id, classification)
+            db.execute("UPDATE messages SET classified_at=NULL WHERE id=?", (message_id,))
         return message_id
+
+    def save_message(self, message: EmailMessage) -> int:
+        """Assign a stable local ID without classifying or processing a message."""
+        with self.connect() as db:
+            return self._upsert_message(db, message, processed=False)
 
     def get_triage(
         self, account_id: str, provider_id: str
@@ -140,13 +156,39 @@ class Database:
         return row["id"], EmailClassification.model_validate_json(row["payload"])
 
     def update_classification(self, message_id: int, classification: EmailClassification) -> bool:
-        """Replace a stored classification."""
+        """Save a classification for an existing local message."""
         with self.connect() as db:
+            message_exists = db.execute(
+                "SELECT 1 FROM messages WHERE id=?", (message_id,)
+            ).fetchone()
+            if not message_exists:
+                return False
             cursor = db.execute(
-                "UPDATE classifications SET payload=? WHERE message_id=?",
-                (classification.model_dump_json(), message_id),
+                """INSERT INTO classifications(message_id, payload) VALUES(?, ?)
+                   ON CONFLICT(message_id) DO UPDATE SET payload=excluded.payload""",
+                (message_id, classification.model_dump_json()),
             )
+            if cursor.rowcount:
+                db.execute("UPDATE messages SET classified_at=NULL WHERE id=?", (message_id,))
         return cursor.rowcount > 0
+
+    def complete_classification(
+        self,
+        message_id: int,
+        destination: str | None,
+        synchronization: CategorySyncResult | None,
+    ) -> None:
+        """Finalize classification only after mailbox category synchronization succeeds."""
+        with self.connect() as db:
+            if synchronization is not None and synchronization.source_moved:
+                db.execute(
+                    "UPDATE messages SET provider_uid=?, provider_mailbox=? WHERE id=?",
+                    (synchronization.provider_id, synchronization.mailbox, message_id),
+                )
+            self._mark_category_synced(db, message_id, destination, synchronization)
+            db.execute(
+                "UPDATE messages SET classified_at=CURRENT_TIMESTAMP WHERE id=?", (message_id,)
+            )
 
     def save_result(
         self,
