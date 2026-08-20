@@ -2,11 +2,7 @@
 
 Email Agent classifies recent email, organizes the mailbox, and prepares reply
 suggestions for review. It can upload a suggestion to the mailbox Drafts folder,
-but it cannot send email.
-
-It supports Gmail and IMAP accounts. Classification and drafting use validated,
-structured model output. Provider calls, storage, and mailbox changes remain in
-deterministic Python services.
+but it cannot send email. It supports Gmail and IMAP accounts. 
 
 ## Quick start
 
