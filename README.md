@@ -1,17 +1,23 @@
 # Email Agent
 
-Python/LangChain email assistant that retrieves unread mail, classifies it with validated structured output, and generates reviewable draft replies.
+Email Agent classifies recent email, organizes the mailbox, and prepares reply
+suggestions for review. It can upload a suggestion to the mailbox Drafts folder,
+but it cannot send email.
+
+It supports Gmail and IMAP accounts. Classification and drafting use validated,
+structured model output. Provider calls, storage, and mailbox changes remain in
+deterministic Python services.
 
 ## Quick start
+
+Install the application and create a private environment file:
 
 ```bash
 uv sync --extra dev
 cp .env.example .env
 ```
 
-### Create an account
-
-Each email address is one complete mailbox configuration. Create a Gmail account with the personal template:
+Create a Gmail account from the personal template:
 
 ```bash
 uv run email-agent account add you@gmail.com \
@@ -21,131 +27,73 @@ uv run email-agent account add you@gmail.com \
   --model gpt-5.4-mini
 ```
 
-For an IMAP customer-support mailbox:
+For Gmail, complete [Gmail OAuth setup](docs/gmail_oauth_setup.md) before the
+first connection.
 
-```bash
-uv run email-agent account add support@example.com \
-  --provider imap \
-  --imap-host imap.example.com \
-  --template support \
-  --model-provider ollama \
-  --model qwen3
-```
-
-This creates or updates the ignored `accounts.yaml` and generates one editable system prompt at `prompts/<email-slug>/system.md`. Account-specific behavior, context, tone, and escalation judgment belong in that file; categories remain simple descriptions in YAML. Users address the mailbox by its actual email address. IMAP credentials stay in `.env`; YAML contains only their environment-variable names. Gmail OAuth files stay in the ignored `secrets/` directory.
-
-Validate before connecting:
+Validate the configuration:
 
 ```bash
 uv run email-agent account validate
 uv run email-agent account
 ```
 
-### Email setup
+## Use Email Agent
 
-- See [Gmail OAuth Setup](docs/gmail_oauth_setup.md) for Gmail.
+Start the interactive shell:
 
-### CLI commands
+```bash
+uv run email-agent
+```
+
+The shell selects the only configured account automatically. If several accounts
+exist, it asks which one to use. Type `/help` to see the available slash commands.
+See the [interactive shell guide](docs/interactive_shell.md) for examples.
+
+The same workflows are available as scriptable CLI commands:
 
 ```bash
 uv run email-agent inbox --account you@gmail.com
-uv run email-agent inbox --account you@gmail.com --unread
-uv run email-agent inbox --account you@gmail.com --dry-run
-uv run email-agent inbox --account you@gmail.com --reorganize
-uv run email-agent inbox --account you@gmail.com --watch
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
-uv run email-agent drafts show 1
 uv run email-agent drafts generate 1
 uv run email-agent drafts review --account you@gmail.com
 uv run email-agent drafts upload 1
-uv run email-agent drafts delete 1
 ```
 
-Add `-v` anywhere in the command for workflow details, or `-vv` for diagnostic provider and timing information:
+Run `uv run email-agent --help` or add `--help` after a command for the current
+command reference.
+
+The `inbox` command processes each message independently. A failure for one
+message does not stop the remaining batch. Classification and draft data are
+saved before mailbox changes. A message is marked as processed only after mailbox
+synchronization succeeds.
+
+## Safety and privacy
+
+- Email Agent does not send email.
+- Draft generation creates a pending local suggestion.
+- Draft upload creates a mailbox draft for review.
+- Raw message bodies are not stored in SQLite.
+- Credentials and OAuth tokens are not logged.
+- Exact model content is logged only when model tracing is explicitly enabled.
+
+Read [Observability and privacy](docs/observability_and_privacy.md) before enabling
+model tracing or LangSmith.
+
+## Documentation
+
+- [Configuration](docs/configuration.md)
+- [Categories and mailbox organization](docs/categories.md)
+- [Interactive shell](docs/interactive_shell.md)
+- [Gmail OAuth setup](docs/gmail_oauth_setup.md)
+- [Observability and privacy](docs/observability_and_privacy.md)
+- [Architecture and safety boundaries](docs/architecture.md)
+- [Development](docs/development.md)
+
+## Development checks
 
 ```bash
-uv run email-agent -v inbox --account you@gmail.com
-uv run email-agent inbox --account you@gmail.com --dry-run -vv
-```
-
-Verbose logs are written to stderr, colored by severity in interactive terminals, and omit credentials, tokens, message bodies, and draft contents. Set `NO_COLOR=1` or redirect stderr to disable ANSI color.
-
-To inspect the exact payload sent to the configured model, add `--trace-model` anywhere in the command. This logs complete system prompts, email/thread content, and structured model responses to stderr, so use it only in a trusted terminal:
-
-```bash
-uv run email-agent inbox --account you@gmail.com --trace-model
-```
-
-### LangSmith tracing
-
-Email Agent's LangChain model calls can be inspected in
-[LangSmith](https://docs.langchain.com/langsmith/observability-quickstart). Add a
-LangSmith API key to `.env`, enable tracing, and choose a project name:
-
-```dotenv
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=your-langsmith-api-key
-LANGSMITH_PROJECT=email-agent
-```
-
-LangSmith tracing is independent of `--trace-model`: it sends traces to LangSmith
-rather than printing exact p prompayloads in the terminal. Traces may contain complete
-email content, systemts, and generated drafts. Enable it only for a trusted
-LangSmith workspace whose retention and access policies are appropriate for the
-mailbox. Set `LANGSMITH_TRACING=false` to disable it. To retain trace structure while
-hiding model inputs and outputs, also set `LANGSMITH_HIDE_INPUTS=true` and
-`LANGSMITH_HIDE_OUTPUTS=true`; see the
-[LangSmith data-masking documentation](https://docs.langchain.com/langsmith/mask-inputs-outputs).
-
-`-v`, `-vv`, and `--trace-model` are global and may appear before the command, after a nested command, or after command-specific options. They can also be combined:
-
-```bash
-uv run email-agent account add --help -vv
-uv run email-agent inbox --account you@gmail.com -v --trace-model
-```
-
-`inbox` is the everyday command: it processes new mail, applies configured labels or folders, prepares appropriate drafts, and then displays the prioritized view. When only one account is configured, `--account` is optional. Each message has familiar, user-facing attributes:
-
-- **Category** says what the message is about.
-- **Priority** (`urgent`, `normal`, or `low`) controls its inbox section.
-- **Draft ready** means the assistant recommends replying and prepared a draft.
-
-`inbox` handles each message independently. A model, mailbox, or storage error is reported for that message while the rest of the batch continues. Classification and draft results are saved before mailbox changes, and a message is marked processed only after synchronization succeeds; failed messages remain eligible for the next run without creating duplicate drafts. Add `--watch` to keep checking, `--dry-run` to classify without changing the mailbox or generating drafts, or `--reorganize` after changing category definitions.
-
-### Categories and mailbox organization
-
-Categories are the single organization concept. Define them directly under an account; the description teaches the classifier when to use each category:
-
-```yaml
-categories:
-  agent/action: Requires a reply, decision, or other action from me.
-  agent/receipts: Purchases, invoices, and payment confirmations.
-  agent/newsletters: Subscriptions and recurring publications.
-  agent/reference: Useful information requiring no action.
-```
-
-The category key is the exact lowercase Gmail label or IMAP folder path. Use `travel` for a top-level destination or `agent/travel` when you want a prefix. The normal `inbox` workflow applies it automatically: Gmail uses a label, while IMAP creates the folder hierarchy and copies the message without removing the Inbox copy. Reclassification replaces the previous agent-managed label or folder copy; unrelated labels and the original Inbox message are left alone.
-
-IMAP accounts default to copying messages into category folders. Safe replacement requires the server's standard `UIDPLUS` support so the agent can track the copied message. Set `category_action: move` on the account to remove categorized messages from Inbox instead; move mode additionally requires the server's `MOVE` capability. The agent will refuse unsafe fallback behavior. Gmail accounts must omit this setting because labels do not copy messages.
-
-Messages that do not clearly fit a configured category remain `Uncategorized`. They still receive a priority, summary, and reply recommendation, but no Gmail label or IMAP folder is applied.
-
-`accounts.yaml` is the only category-routing authority; obsolete names are never translated implicitly. After changing the configured taxonomy, use `inbox --reorganize` to reclassify and resync recent stored messages.
-
-Gmail organization and draft upload require the `gmail.modify` and `gmail.compose` OAuth scopes. Existing Gmail users must remove or move their configured token file once and run a command again to grant expanded permission; see [Gmail OAuth Setup](docs/gmail_oauth_setup.md).
-
-`drafts generate LOCAL_ID` creates a reply suggestion for a specific message, even when the original classification did not recommend replying. Running it again replaces the local suggestion. `drafts review` cycles through suggestions, showing the original mailbox message beside each suggested reply. Upload saves a real draft in Gmail or the IMAP Drafts folder and removes it from the local review queue; it never sends email. Delete dismisses the local suggestion without changing the mailbox. Raw email bodies are not persisted; review and `message show` retrieve the current body from the mailbox using the stored provider ID.
-
-## Architecture
-
-The code is grouped by responsibility: `config/` defines and loads account configuration, `providers/` contains Gmail and IMAP adapters, `db/` owns SQLite persistence and migrations, `services/` implements application workflows, `ai/` owns model construction, prompts, and LangChain interactions, and `cli/` contains the Typer application, terminal logging, and rendering. Process-wide model-trace state lives in `diagnostics.py` so AI code does not depend on CLI formatting. `RuntimeFactory` builds typed dependencies for account commands, while `cli/app.py` declares commands and delegates their work. Shared email models and category rules remain outside AI because providers, storage, and services also use them. Sending is not implemented, so generated replies always remain local drafts for review.
-
-SQLite schema changes are applied automatically at startup as ordered, transactional migrations recorded in `schema_migrations`. Existing v0.1 databases are upgraded in place; back up `data/email_agent.db` before upgrading if it contains important local drafts.
-
-## Tests
-
-```bash
-uv run pytest
 uv run ruff check .
+uv run pytest
+git diff --check
 ```
