@@ -1,4 +1,5 @@
 from email_agent.cli.rendering import (
+    _cell,
     category_name,
     inbox_table_header,
     inbox_table_row,
@@ -28,3 +29,8 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
     assert "Karen Hall" in lines[2]
     assert "agent/solicitations" in lines[2]
     assert "READY" in lines[2]
+
+
+def test_inbox_cell_uses_terminal_width_for_emojis():
+    assert _cell("Hello 👋", 10) == "Hello 👋  "
+    assert _cell("One two three 🚀", 12) == "One two thr…"

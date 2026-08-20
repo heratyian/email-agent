@@ -1,4 +1,5 @@
 import typer
+from wcwidth import wcswidth, wcwidth
 
 from email_agent.db import StoredDraft
 from email_agent.models import EmailMessage
@@ -37,9 +38,20 @@ def message_id(value: int, *, prefix: str = "") -> None:
 def _cell(value: object, width: int) -> str:
     """Fit one value into a stable terminal column."""
     text = str(value or "—").replace("\n", " ").strip()
-    if len(text) > width:
-        text = f"{text[: width - 1]}…"
-    return text.ljust(width)
+    # Python counts Unicode code points, but terminals align by display cells.
+    # Emoji and East Asian characters often occupy two cells, so len() misaligns later columns.
+    if wcswidth(text) > width:
+        truncated = []
+        available_width = width - 1
+        current_width = 0
+        for character in text:
+            character_width = max(wcwidth(character), 0)
+            if current_width + character_width > available_width:
+                break
+            truncated.append(character)
+            current_width += character_width
+        text = f"{''.join(truncated)}…"
+    return text + " " * max(width - wcswidth(text), 0)
 
 
 def inbox_table_header() -> None:
