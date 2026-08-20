@@ -23,6 +23,12 @@ class AccountRuntime:
     database: Database
     agents: EmailAgents | None
 
+    def require_agents(self) -> EmailAgents:
+        """Return configured model operations for workflows that require them."""
+        if self.agents is None:
+            raise RuntimeError("This workflow requires configured model agents")
+        return self.agents
+
 
 class RuntimeFactory:
     """Build account-scoped application dependencies in one place."""

@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
-from email_agent.models import EmailClassification
+from email_agent.ai.agents import EmailAgents
+from email_agent.config import AccountConfig
+from email_agent.db import Database, OrganizationCandidate
+from email_agent.providers import MailProvider
 from email_agent.services.category_routing import category_destination
 
 logger = logging.getLogger(__name__)
@@ -63,7 +65,14 @@ class OrganizationReport:
 class OrganizationService:
     """Reclassify and synchronize stored categories without CLI concerns."""
 
-    def __init__(self, account_id: str, account, provider, database, agents=None):
+    def __init__(
+        self,
+        account_id: str,
+        account: AccountConfig,
+        provider: MailProvider,
+        database: Database,
+        agents: EmailAgents | None = None,
+    ):
         self.account_id = account_id
         self.account = account
         self.provider = provider
@@ -112,15 +121,15 @@ class OrganizationService:
 
     def _organize_one(
         self,
-        row: Any,
+        row: OrganizationCandidate,
         *,
         dry_run: bool,
         force: bool,
         reclassify_unknown: bool,
         reclassify_all: bool,
     ) -> OrganizationItem:
-        local_id, subject = row["id"], row["subject"]
-        classification = EmailClassification.model_validate_json(row["classification"])
+        local_id, subject = row.id, row.subject
+        classification = row.classification
         missing_category = False
         try:
             destination = category_destination(self.account.agent, classification)
@@ -136,10 +145,10 @@ class OrganizationService:
         if reclassify_all or (reclassify_unknown and missing_category):
             try:
                 message = self.provider.get_message(
-                    row["provider_uid"], row["provider_mailbox"]
+                    row.provider_uid, row.provider_mailbox
                 )
                 thread = self.provider.get_thread(
-                    row["provider_uid"], row["provider_mailbox"]
+                    row.provider_uid, row.provider_mailbox
                 )
                 classification = self.agents.classify(message, thread)
                 destination = category_destination(self.account.agent, classification)
@@ -174,7 +183,7 @@ class OrganizationService:
                 )
             try:
                 self.provider.sync_category(
-                    row["provider_uid"], None, row["provider_mailbox"], previous
+                    row.provider_uid, None, row.provider_mailbox, previous
                 )
                 self.database.mark_category_synced(local_id, None)
             except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
@@ -212,7 +221,7 @@ class OrganizationService:
         try:
             previous = self.database.current_category_sync(local_id)
             sync = self.provider.sync_category(
-                row["provider_uid"], destination, row["provider_mailbox"], previous
+                row.provider_uid, destination, row.provider_mailbox, previous
             )
             if sync is not None and sync.source_moved:
                 self.database.update_provider_location(local_id, sync.provider_id, sync.mailbox)

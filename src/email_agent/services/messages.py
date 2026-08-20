@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from email_agent.config import Settings
 from email_agent.db import Database
-from email_agent.models import EmailMessage
+from email_agent.models import EmailClassification, EmailMessage
 from email_agent.providers import create_mail_provider
 
 logger = logging.getLogger(__name__)
@@ -18,7 +16,7 @@ class MessageDetails:
     """A provider message combined with its local workflow metadata."""
 
     message: EmailMessage
-    classification: dict[str, Any] | None
+    classification: EmailClassification | None
 
 
 class MessageService:
@@ -33,14 +31,13 @@ class MessageService:
         row = self.database.show_message(message_id)
         if not row:
             raise LookupError("message not found")
-        account = self.settings.account(row["account_id"])
-        provider = create_mail_provider(row["account_id"], account, self.settings.root)
+        account = self.settings.account(row.account_id)
+        provider = create_mail_provider(row.account_id, account, self.settings.root)
         logger.debug(
             "Retrieving local message %s from provider=%s mailbox=%s",
             message_id,
             account.provider,
-            row["provider_mailbox"],
+            row.provider_mailbox,
         )
-        message = provider.get_message(row["provider_uid"], row["provider_mailbox"])
-        classification = json.loads(row["classification"]) if row["classification"] else None
-        return MessageDetails(message, classification)
+        message = provider.get_message(row.provider_uid, row.provider_mailbox)
+        return MessageDetails(message, row.classification)

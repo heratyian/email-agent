@@ -77,7 +77,7 @@ def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
     )
     details = service.show(local_id)
     assert details.message.subject == "Question"
-    assert details.classification["category"] == "action"
+    assert details.classification.category == "action"
 
 
 def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, monkeypatch):
@@ -106,12 +106,12 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
         "email_agent.services.drafts.create_mail_provider",
         lambda account_id, account, root: Provider(),
     )
-    service = DraftService(database, settings)
+    service = DraftService(database)
 
-    assert service.get(1)["subject"] == "Re: Question"
-    assert service.source_message(1).content == source.content
-    assert service.upload(1) == "mailbox-draft-1"
-    assert service.get(1)["status"] == "uploaded"
+    assert service.get(1).subject == "Re: Question"
+    assert service.source_message(1, settings).content == source.content
+    assert service.upload(1, settings) == "mailbox-draft-1"
+    assert service.get(1).status == "uploaded"
     assert service.list() == []
 
 
@@ -139,7 +139,7 @@ def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
     service = DraftService(database)
     service.delete(1)
 
-    assert service.get(1)["status"] == "rejected"
+    assert service.get(1).status == "rejected"
     assert service.list() == []
 
 
@@ -176,5 +176,5 @@ def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
 
     assert first.body == "Generated answer 1."
     assert second.body == "Generated answer 2."
-    assert service.get(local_id)["body"] == "Generated answer 2."
+    assert service.get(local_id).body == "Generated answer 2."
     assert len(service.list()) == 1

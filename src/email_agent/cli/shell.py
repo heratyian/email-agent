@@ -10,9 +10,11 @@ import typer
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
-    category_name,
+    render_draft_list,
     render_inbox_items,
+    render_message_details,
     render_processing_summary,
+    render_review_item,
 )
 from email_agent.diagnostics import configure_model_tracing
 
@@ -179,15 +181,7 @@ class InteractiveShell:
 
     def _show(self, args: list[str]) -> None:
         message_id = self._require_active_message(self._one_id(args, "/show LOCAL_ID"))
-        details = self.handlers.show_message(message_id)
-        message = details.message
-        typer.echo(f"From: {message.from_name or message.from_address}")
-        typer.echo(f"Subject: {message.subject}\n\n{message.content or '(No plain-text body)'}")
-        if details.classification:
-            classification = details.classification
-            typer.echo(f"\nCategory: {category_name(classification['category'])}")
-            typer.echo(f"Priority: {classification['priority'].upper()}")
-            typer.echo(f"Summary: {classification['summary']}")
+        render_message_details(self.handlers.show_message(message_id), show_confidence=False)
 
     def _draft(self, args: list[str]) -> None:
         if not args:
@@ -207,33 +201,27 @@ class InteractiveShell:
         if not rows:
             typer.echo("No draft suggestions to review.")
             return
-        for row in rows:
-            typer.echo(f"{row['message_id']}: To {row['recipient']} — {row['subject']}")
+        render_draft_list(rows)
 
     def _review(self, args: list[str]) -> None:
         if args:
             raise ShellUsageError("/review")
-        service = self.handlers.draft_service(mailbox_access=True)
-        rows = service.list(self._active())
-        for row in rows:
-            typer.secho(f"\nDraft #{row['message_id']}", fg=typer.colors.CYAN, bold=True)
+        drafts = self.handlers.list_drafts(self._active())
+        for draft in drafts:
             try:
-                source = service.source_message(row["message_id"])
+                source = self.handlers.source_message(draft.message_id)
             except Exception as exc:  # noqa: BLE001 - keep the remaining review queue usable
-                typer.secho(f"Original message unavailable: {exc}", fg=typer.colors.RED)
+                render_review_item(draft, None, str(exc))
             else:
-                typer.echo(f"Original message\nFrom: {source.from_name or source.from_address}")
-                typer.echo(f"Subject: {source.subject}\n\n{source.content or '(No plain-text body)'}")
-            typer.echo(f"\nSuggested reply\nTo: {row['recipient']}")
-            typer.echo(f"Subject: {row['subject']}\n\n{row['body']}\n")
+                render_review_item(draft, source, None)
             choice = self.prompt("[u] Upload  [d] Delete  [k] Keep  [q] Quit", default="k", show_default=False).strip().lower()
             if choice in {"q", "quit"}:
                 break
             if choice in {"u", "upload"}:
-                service.upload(row["message_id"])
+                self.handlers.upload_draft(draft.message_id)
                 typer.echo("✓ Uploaded to mailbox drafts. No email was sent.")
             elif choice in {"d", "delete"}:
-                service.delete(row["message_id"])
+                self.handlers.delete_draft(draft.message_id)
                 typer.echo("✓ Deleted suggestion.")
             else:
                 typer.echo("Kept for later.")

@@ -121,9 +121,9 @@ def test_pipeline_tracks_moved_imap_uid_without_changing_stable_identity(tmp_pat
     ).process()[0]
 
     row = db.show_message(result.local_id)
-    assert row["provider_message_id"] == "abc"
-    assert row["provider_uid"] == "900"
-    assert row["provider_mailbox"] == "action"
+    assert row.provider_message_id == "abc"
+    assert row.provider_uid == "900"
+    assert row.provider_mailbox == "action"
 
 
 def test_pipeline_sync_failure_stays_pending_and_retries_without_duplicate_draft(tmp_path):
@@ -269,7 +269,7 @@ def test_inbox_triage_assigns_local_id_without_completing_processing(tmp_path):
     results = InboxService(FakeProvider(message), agents, db).list()
     assert results[0].group is PriorityGroup.NORMAL
     assert results[0].local_id > 0
-    assert db.show_message(results[0].local_id)["provider_message_id"] == "triage-only"
+    assert db.show_message(results[0].local_id).provider_message_id == "triage-only"
     assert db.is_processed(message.account_id, message.provider_id) is False
     assert db.list_drafts() == []
 

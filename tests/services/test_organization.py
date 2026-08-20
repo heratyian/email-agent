@@ -1,18 +1,19 @@
 from types import SimpleNamespace
 
 from email_agent.config import AgentConfig
+from email_agent.db import OrganizationCandidate
 from email_agent.models import EmailClassification, EmailMessage, EmailThread
 from email_agent.services.organization import OrganizationService, OrganizationStatus
 
 
-def classification(category: str | None) -> str:
+def classification(category: str | None) -> EmailClassification:
     return EmailClassification(
         category=category,
         requires_reply=False,
         priority="normal",
         summary="Test message",
         confidence=0.9,
-    ).model_dump_json()
+    )
 
 
 def account():
@@ -71,13 +72,13 @@ class FakeProvider:
 
 
 def row(local_id: int, category: str | None):
-    return {
-        "id": local_id,
-        "provider_uid": str(local_id),
-        "provider_mailbox": "INBOX",
-        "subject": f"Message {local_id}",
-        "classification": classification(category),
-    }
+    return OrganizationCandidate(
+        id=local_id,
+        provider_uid=str(local_id),
+        provider_mailbox="INBOX",
+        subject=f"Message {local_id}",
+        classification=classification(category),
+    )
 
 
 def test_organization_service_reports_mixed_message_outcomes():

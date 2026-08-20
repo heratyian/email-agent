@@ -5,6 +5,18 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from email_agent.db.migrations import migrate
+from email_agent.db.records import (
+    OrganizationCandidate,
+    StoredDraft,
+    StoredMessage,
+)
+from email_agent.db.repositories import (
+    DraftRepository,
+    MessageRepository,
+    OrganizationRepository,
+    ProcessingRunRepository,
+    mark_category_synced,
+)
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
 from email_agent.providers.base import CategorySyncResult, CategorySyncState
 
@@ -16,6 +28,10 @@ class Database:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
+        self.drafts = DraftRepository(self.connect)
+        self.messages = MessageRepository(self.connect)
+        self.organization = OrganizationRepository(self.connect)
+        self.processing_runs = ProcessingRunRepository(self.connect)
 
     @contextmanager
     def connect(self):
@@ -215,33 +231,16 @@ class Database:
         drafted: bool,
         error: str | None = None,
     ) -> None:
-        with self.connect() as db:
-            db.execute(
-                "INSERT INTO agent_runs(message_id,account_id,model,latency_ms,draft_generated,error) VALUES(?,?,?,?,?,?)",
-                (
-                    message_id,
-                    account_id,
-                    f"{agent.model.provider}:{agent.model.model}",
-                    latency_ms,
-                    drafted,
-                    error,
-                ),
-            )
+        self.processing_runs.record(
+            message_id, account_id, agent, latency_ms, drafted, error
+        )
 
-    def list_drafts(self, account_id: str | None = None) -> list[sqlite3.Row]:
-        query, params = "SELECT * FROM drafts WHERE status='generated'", ()
-        if account_id:
-            query, params = query + " AND account_id=?", (account_id,)
-        with self.connect() as db:
-            return db.execute(query + " ORDER BY created_at DESC", params).fetchall()
+    def list_drafts(self, account_id: str | None = None) -> list[StoredDraft]:
+        return self.drafts.list(account_id)
 
-    def get_draft(self, message_id: int) -> sqlite3.Row | None:
+    def get_draft(self, message_id: int) -> StoredDraft | None:
         """Return the newest local draft for one message."""
-        with self.connect() as db:
-            return db.execute(
-                "SELECT * FROM drafts WHERE message_id=? ORDER BY created_at DESC LIMIT 1",
-                (message_id,),
-            ).fetchone()
+        return self.drafts.get(message_id)
 
     def replace_generated_draft(
         self,
@@ -251,98 +250,32 @@ class Database:
         reply: DraftReply,
     ) -> Draft:
         """Replace the local review suggestion without touching uploaded drafts."""
-        draft = Draft(
-            account_id=account_id,
-            source_message_id=source_message_id,
-            to=[reply.recipient],
-            subject=reply.subject,
-            body=reply.body,
-        )
-        with self.connect() as db:
-            db.execute("DELETE FROM drafts WHERE message_id=? AND status='generated'", (message_id,))
-            db.execute(
-                """INSERT INTO drafts(
-                       id, message_id, account_id, source_message_id, recipient,
-                       subject, body, status, metadata, created_at
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    str(draft.id),
-                    message_id,
-                    account_id,
-                    source_message_id,
-                    reply.recipient,
-                    reply.subject,
-                    reply.body,
-                    draft.status,
-                    reply.model_dump_json(),
-                    draft.created_at.isoformat(),
-                ),
-            )
-        return draft
+        return self.drafts.replace(message_id, account_id, source_message_id, reply)
 
-    def show_message(self, message_id: int) -> sqlite3.Row | None:
-        with self.connect() as db:
-            return db.execute(
-                "SELECT m.*, c.payload classification FROM messages m LEFT JOIN classifications c ON c.message_id=m.id WHERE m.id=?",
-                (message_id,),
-            ).fetchone()
+    def show_message(self, message_id: int) -> StoredMessage | None:
+        return self.messages.get(message_id)
 
     def delete_generated_drafts(self, message_id: int) -> int:
         """Delete untouched model-generated drafts for one local message."""
-        with self.connect() as db:
-            cursor = db.execute(
-                "DELETE FROM drafts WHERE message_id=? AND status='generated'", (message_id,)
-            )
-        return cursor.rowcount
+        return self.drafts.delete_generated(message_id)
 
     def has_draft(self, message_id: int) -> bool:
         """Return whether a non-rejected local draft exists for a message."""
-        with self.connect() as db:
-            row = db.execute(
-                "SELECT 1 FROM drafts WHERE message_id=? AND status!='rejected' LIMIT 1",
-                (message_id,),
-            ).fetchone()
-        return bool(row)
+        return self.drafts.exists(message_id)
 
-    def list_categorized_messages(self, account_id: str, limit: int = 100) -> list[sqlite3.Row]:
+    def list_categorized_messages(
+        self, account_id: str, limit: int = 100
+    ) -> list[OrganizationCandidate]:
         """Return recent locally classified messages eligible for provider sync."""
-        with self.connect() as db:
-            return db.execute(
-                """
-                SELECT m.*, c.payload AS classification
-                FROM messages AS m
-                JOIN classifications AS c ON c.message_id=m.id
-                WHERE m.account_id=?
-                ORDER BY m.received_at DESC
-                LIMIT ?
-                """,
-                (account_id, limit),
-            ).fetchall()
+        return self.organization.list_candidates(account_id, limit)
 
     def category_was_synced(self, message_id: int, destination: str) -> bool:
         """Return whether this is the message's current managed category."""
-        with self.connect() as db:
-            row = db.execute(
-                "SELECT 1 FROM category_syncs WHERE message_id=? AND destination=? AND active=1",
-                (message_id, destination),
-            ).fetchone()
-        return bool(row)
+        return self.organization.was_synced(message_id, destination)
 
     def current_category_sync(self, message_id: int) -> CategorySyncState | None:
         """Return the most recently active managed category and provider location."""
-        with self.connect() as db:
-            row = db.execute(
-                """SELECT destination, provider_uid AS provider_id,
-                          provider_mailbox AS mailbox
-                   FROM category_syncs WHERE message_id=? AND active=1
-                   ORDER BY id DESC LIMIT 1""",
-                (message_id,),
-            ).fetchone()
-        if not row:
-            return None
-        values = dict(row)
-        values["destination"] = values["destination"].removeprefix("move:")
-        return CategorySyncState(**values)
+        return self.organization.current(message_id)
 
     def mark_category_synced(
         self,
@@ -351,8 +284,7 @@ class Database:
         result: CategorySyncResult | None = None,
     ) -> None:
         """Make ``destination`` the sole active managed category for a message."""
-        with self.connect() as db:
-            self._mark_category_synced(db, message_id, destination, result)
+        self.organization.mark(message_id, destination, result)
 
     @staticmethod
     def _mark_category_synced(
@@ -361,47 +293,16 @@ class Database:
         destination: str | None,
         result: CategorySyncResult | None,
     ) -> None:
-        db.execute("UPDATE category_syncs SET active=0 WHERE message_id=?", (message_id,))
-        if destination is not None:
-            db.execute(
-                """INSERT INTO category_syncs(
-                       message_id, destination, provider_uid, provider_mailbox, active
-                   ) VALUES(?,?,?,?,1)
-                   ON CONFLICT(message_id,destination) DO UPDATE SET
-                       provider_uid=excluded.provider_uid,
-                       provider_mailbox=excluded.provider_mailbox,
-                       active=1,
-                       synced_at=CURRENT_TIMESTAMP""",
-                (
-                    message_id,
-                    destination,
-                    result.provider_id if result else None,
-                    result.mailbox if result else None,
-                ),
-            )
+        mark_category_synced(db, message_id, destination, result)
 
     def update_provider_location(self, message_id: int, provider_id: str, mailbox: str) -> None:
         """Store the UID and folder assigned by an IMAP move."""
-        with self.connect() as db:
-            db.execute(
-                "UPDATE messages SET provider_uid=?, provider_mailbox=? WHERE id=?",
-                (provider_id, mailbox, message_id),
-            )
+        self.messages.update_provider_location(message_id, provider_id, mailbox)
 
     def mark_draft_uploaded(self, message_id: int) -> bool:
         """Remove a successfully uploaded suggestion from the local review queue."""
-        with self.connect() as db:
-            cursor = db.execute(
-                "UPDATE drafts SET status='uploaded' WHERE message_id=? AND status='generated'",
-                (message_id,),
-            )
-        return cursor.rowcount > 0
+        return self.drafts.mark_uploaded(message_id)
 
     def reject_draft(self, message_id: int) -> bool:
         """Remove a suggestion from review while retaining an audit record."""
-        with self.connect() as db:
-            cursor = db.execute(
-                "UPDATE drafts SET status='rejected' WHERE message_id=? AND status='generated'",
-                (message_id,),
-            )
-        return cursor.rowcount > 0
+        return self.drafts.reject(message_id)

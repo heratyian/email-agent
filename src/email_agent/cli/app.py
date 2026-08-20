@@ -9,16 +9,14 @@ from typer.core import TyperGroup
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
-    GROUP_COLORS,
-    category_name,
-    inbox_table_header,
-    inbox_table_row,
+    render_draft,
+    render_draft_list,
     render_inbox_items,
-    render_processed,
+    render_message_details,
     render_processing_results,
+    render_review_item,
 )
-from email_agent.config import PROJECT_ROOT, Settings
-from email_agent.db import Database
+from email_agent.config import PROJECT_ROOT
 from email_agent.diagnostics import configure_model_tracing
 from email_agent.generators import (
     AccountProvider,
@@ -26,17 +24,7 @@ from email_agent.generators import (
     CategoryAction,
     ModelProvider,
 )
-from email_agent.runtime import AccountRuntime, RuntimeFactory
-from email_agent.services import (
-    PRIORITY_GROUP_ORDER,
-    AccountService,
-    DraftService,
-    InboxService,
-    OrganizationService,
-    OrganizationStatus,
-    ProcessingFailure,
-    ProcessingService,
-)
+from email_agent.services import OrganizationStatus
 
 
 class GlobalOptionsAnywhereGroup(TyperGroup):
@@ -113,14 +101,9 @@ def main(
 
         run_shell(verbosity=verbose, trace_model=trace_model)
 
-def _runtime(account_id: str, *, with_agents: bool = True) -> AccountRuntime:
-    """Build typed dependencies for one CLI account command."""
-    return RuntimeFactory().for_account(account_id, with_agents=with_agents)
-
-
 def _account_id(requested: str | None) -> str:
     """Resolve an optional account when exactly one mailbox is configured."""
-    accounts = AccountService(PROJECT_ROOT).list()
+    accounts = CommandHandlers().accounts()
     if requested:
         if requested not in accounts:
             raise typer.BadParameter(f"Unknown account '{requested}'")
@@ -141,7 +124,7 @@ def account(ctx: typer.Context):
 
 def list_accounts():
     """Render configured accounts without connecting to them."""
-    for account_id, account in AccountService(PROJECT_ROOT).list().items():
+    for account_id, account in CommandHandlers().accounts().items():
         typer.echo(f"{account_id}: {account.provider}")
 
 
@@ -172,7 +155,7 @@ def add_account(
 ):
     """Create or add a mailbox account in the private accounts.yaml file."""
     try:
-        generated = AccountService(PROJECT_ROOT).create(
+        generated = CommandHandlers().create_account(
             email,
             provider,
             template,
@@ -207,7 +190,7 @@ def add_account(
 def validate_config():
     """Validate mailbox accounts, model settings, categories, and system prompts."""
     try:
-        account_ids = AccountService(PROJECT_ROOT).validate()
+        account_ids = CommandHandlers().validate_accounts()
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     for account_id in account_ids:
@@ -217,100 +200,6 @@ def validate_config():
         fg=typer.colors.GREEN,
         bold=True,
     )
-
-
-def _refresh_inbox(
-    runtime: AccountRuntime,
-    account_id: str,
-    limit: int,
-    dry_run: bool,
-    reorganize: bool,
-) -> int:
-    """Process new mail and optionally repair categories before rendering."""
-    typer.echo(f"Checking {runtime.account.email}...")
-    if dry_run:
-        typer.secho("DRY RUN — mailbox labels and drafts will not change", fg=typer.colors.YELLOW)
-        return 0
-
-    results = ProcessingService(
-        account_id,
-        runtime.account.agent,
-        runtime.provider,
-        runtime.agents,
-        runtime.database,
-    ).process(limit)
-    if results:
-        typer.secho("\nProcessed mail", bold=True)
-        inbox_table_header()
-    for result in results:
-        if isinstance(result, ProcessingFailure):
-            inbox_table_row(
-                local_id=result.local_id or "?",
-                priority="error",
-                sender=result.message.from_name or result.message.from_address,
-                subject=f"{result.message.subject}: {result.error}",
-                category=None,
-                draft_ready=False,
-                color=typer.colors.RED,
-            )
-        else:
-            render_processed(result)
-    succeeded = [item for item in results if not isinstance(item, ProcessingFailure)]
-    drafts = sum(item.draft is not None for item in succeeded)
-    failures = len(results) - len(succeeded)
-    if results:
-        typer.secho(
-            f"Processed {len(succeeded)} · {drafts} drafts ready · {failures} failed",
-            fg=typer.colors.RED if failures else typer.colors.GREEN,
-            bold=True,
-        )
-
-    if reorganize:
-        report = OrganizationService(
-            account_id,
-            runtime.account,
-            runtime.provider,
-            runtime.database,
-            runtime.agents,
-        ).run(limit=limit, force=True, reclassify_all=True)
-        for item in report.items:
-            if item.status is OrganizationStatus.FAILED:
-                typer.secho(f"{item.local_id}: {item.error}", fg=typer.colors.RED)
-        typer.secho(
-            f"Reorganized {report.changed}; {report.failed} failed.",
-            fg=typer.colors.RED if report.failed else typer.colors.GREEN,
-        )
-    return len(succeeded)
-
-
-def _render_inbox(
-    runtime: AccountRuntime,
-    limit: int,
-    unread: bool,
-    processed_count: int = 0,
-) -> None:
-    """Render the prioritized mailbox view after refresh."""
-    items = InboxService(runtime.provider, runtime.agents, runtime.database).list(
-        limit, unread_only=unread
-    )
-    if not items and processed_count:
-        typer.echo("\nNew messages are shown above; organized messages may have moved from Inbox.")
-        return
-    typer.echo(f"\nPrioritized inbox · {len(items)} messages")
-    if items:
-        inbox_table_header()
-    for group in PRIORITY_GROUP_ORDER:
-        for item in (item for item in items if item.group is group):
-            sender = item.message.from_name or item.message.from_address
-            inbox_table_row(
-                local_id=item.local_id,
-                priority=item.classification.priority,
-                sender=sender,
-                subject=item.message.subject,
-                category=item.classification.category,
-                draft_ready=item.draft_ready,
-                color=GROUP_COLORS[group],
-            )
 
 
 @app.command()
@@ -342,16 +231,33 @@ def inbox(
         raise typer.BadParameter("interval must be at least 30 seconds")
     try:
         while True:
-            if not dry_run and not reorganize and not unread:
-                result = CommandHandlers().run_inbox(account_id, limit)
-                processed_count = render_processing_results(result.processed)
-                render_inbox_items(result.items)
-            else:
-                runtime = _runtime(account_id)
-                processed_count = _refresh_inbox(
-                    runtime, account_id, limit, dry_run, reorganize
+            result = CommandHandlers().run_inbox(
+                account_id,
+                limit,
+                unread=unread,
+                dry_run=dry_run,
+                reorganize=reorganize,
+            )
+            if result.dry_run:
+                typer.secho(
+                    "DRY RUN — mailbox labels and drafts will not change",
+                    fg=typer.colors.YELLOW,
                 )
-                _render_inbox(runtime, limit, unread, processed_count)
+            render_processing_results(result.processed)
+            if result.organization:
+                for item in result.organization.items:
+                    if item.status is OrganizationStatus.FAILED:
+                        typer.secho(f"{item.local_id}: {item.error}", fg=typer.colors.RED)
+                typer.secho(
+                    f"Reorganized {result.organization.changed}; "
+                    f"{result.organization.failed} failed.",
+                    fg=(
+                        typer.colors.RED
+                        if result.organization.failed
+                        else typer.colors.GREEN
+                    ),
+                )
+            render_inbox_items(result.items)
             if not watch:
                 break
             typer.echo(f"\nWatching every {interval}s. Ctrl-C to stop.")
@@ -365,17 +271,15 @@ def drafts(ctx: typer.Context, account: Annotated[str | None, typer.Option()] = 
     """Review and upload suggested replies."""
     if ctx.invoked_subcommand is not None:
         return
-    settings = Settings()
+    handlers = CommandHandlers()
     if account:
-        settings.account(account)
-    service = DraftService(Database(settings.database_path))
-    rows = service.list(account)
+        handlers.validate_account(account)
+    rows = handlers.list_drafts(account)
     if not rows:
         typer.echo("No draft suggestions to review.")
         return
     typer.echo(f"{len(rows)} draft suggestions. Run 'email-agent drafts review' to review them.")
-    for row in rows:
-        typer.echo(f"{row['message_id']}: To {row['recipient']} — {row['subject']}")
+    render_draft_list(rows)
 
 
 @message_app.command("show")
@@ -385,36 +289,17 @@ def show_message(message_id: int):
         details = CommandHandlers().show_message(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    message, classification = details.message, details.classification
-
-    typer.echo(f"From: {message.from_name or message.from_address}")
-    typer.echo(f"Subject: {message.subject}\n")
-    typer.echo(message.content or "(No plain-text body)")
-    if classification:
-        typer.echo(f"\nCategory: {category_name(classification['category'])}")
-        typer.echo(f"Priority: {classification['priority'].upper()}")
-        typer.echo(f"Confidence: {classification['confidence']:.2f}")
-        typer.echo(f"Summary: {classification['summary']}")
-        if classification.get("requires_escalation"):
-            typer.secho(
-                "\n⚠ Human attention required",
-                fg=typer.colors.BRIGHT_RED,
-                bold=True,
-            )
-            typer.echo(classification.get("escalation_reason") or "Review required.")
+    render_message_details(details)
 
 
 @drafts_app.command("show")
 def show_draft(message_id: int):
     """Show the local draft associated with a processed message."""
-    settings = Settings()
     try:
-        row = DraftService(Database(settings.database_path)).get(message_id)
+        row = CommandHandlers().show_draft(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    typer.echo(
-        f"To: {row['recipient']}\nSubject: {row['subject']}\n\n{row['body']}\n\nStatus: {row['status']}"
-    )
+    render_draft(row)
 
 
 @drafts_app.command()
@@ -457,29 +342,20 @@ def delete_draft(message_id: int):
 @drafts_app.command()
 def review(account: Annotated[str | None, typer.Option()] = None):
     """Cycle through draft suggestions and upload, delete, keep, or quit."""
-    settings = Settings()
+    handlers = CommandHandlers()
     if account:
-        settings.account(account)
-    service = DraftService(Database(settings.database_path), settings)
-    rows = service.list(account)
+        handlers.validate_account(account)
+    rows = handlers.list_drafts(account)
     if not rows:
         typer.echo("No draft suggestions to review.")
         return
     for row in rows:
-        typer.secho(f"\nDraft #{row['message_id']}", fg=typer.colors.CYAN, bold=True)
         try:
-            source = service.source_message(row["message_id"])
+            source = handlers.source_message(row.message_id)
         except Exception as exc:  # noqa: BLE001 - keep the review queue usable
-            typer.secho(f"Original message unavailable: {exc}", fg=typer.colors.RED)
+            render_review_item(row, None, str(exc))
         else:
-            typer.secho("\nOriginal message", bold=True)
-            typer.echo(f"From: {source.from_name or source.from_address}")
-            typer.echo(f"Subject: {source.subject}")
-            typer.echo(f"Received: {source.received_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}")
-            typer.echo(f"\n{source.content or '(No plain-text body)'}")
-        typer.secho("\nSuggested reply", fg=typer.colors.GREEN, bold=True)
-        typer.echo(f"To: {row['recipient']}")
-        typer.echo(f"Subject: {row['subject']}\n\n{row['body']}\n")
+            render_review_item(row, source, None)
         choice = typer.prompt(
             "[u] Upload  [d] Delete  [k] Keep  [q] Quit",
             default="k",
@@ -489,13 +365,13 @@ def review(account: Annotated[str | None, typer.Option()] = None):
             break
         if choice in {"u", "upload"}:
             try:
-                service.upload(row["message_id"])
+                handlers.upload_draft(row.message_id)
             except (LookupError, RuntimeError) as exc:
                 typer.secho(f"Upload failed: {exc}", fg=typer.colors.RED)
             else:
                 typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN)
         elif choice in {"d", "delete"}:
-            service.delete(row["message_id"])
+            handlers.delete_draft(row.message_id)
             typer.secho("✓ Deleted suggestion.", fg=typer.colors.GREEN)
         else:
             typer.echo("Kept for later.")

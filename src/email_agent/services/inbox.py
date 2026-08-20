@@ -4,7 +4,10 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
+from email_agent.ai.agents import EmailAgents
+from email_agent.db import Database
 from email_agent.models import EmailClassification, EmailMessage
+from email_agent.providers import MailProvider
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ def inbox_group(classification: EmailClassification) -> PriorityGroup:
 class InboxService:
     """Fetch and classify the assistant's prioritized inbox view."""
 
-    def __init__(self, provider, agents, database):
+    def __init__(self, provider: MailProvider, agents: EmailAgents, database: Database):
         self.provider = provider
         self.agents = agents
         self.database = database

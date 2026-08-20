@@ -35,7 +35,7 @@ def test_top_level_help_presents_four_user_concepts():
 def test_verbose_flag_is_accepted_anywhere(monkeypatch, arguments, level):
     configured = []
     monkeypatch.setattr(cli, "configure_logging", configured.append)
-    monkeypatch.setattr(cli.AccountService, "list", lambda self: {})
+    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
 
     result = runner.invoke(app, arguments)
 
@@ -49,7 +49,7 @@ def test_verbose_flag_is_accepted_anywhere(monkeypatch, arguments, level):
 def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     configured = []
     monkeypatch.setattr(cli, "configure_model_tracing", configured.append)
-    monkeypatch.setattr(cli.AccountService, "list", lambda self: {})
+    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
 
     result = runner.invoke(app, arguments)
 
@@ -84,8 +84,8 @@ def test_diagnostic_flags_are_global_for_every_command(command, flag):
 
 def test_account_without_subcommand_lists_accounts(monkeypatch):
     monkeypatch.setattr(
-        cli.AccountService,
-        "list",
+        cli.CommandHandlers,
+        "accounts",
         lambda self: {"person@example.com": SimpleNamespace(provider="gmail")},
     )
 
@@ -97,8 +97,8 @@ def test_account_without_subcommand_lists_accounts(monkeypatch):
 
 def test_single_account_can_be_used_without_account_option(monkeypatch):
     monkeypatch.setattr(
-        cli.AccountService,
-        "list",
+        cli.CommandHandlers,
+        "accounts",
         lambda self: {"person@example.com": SimpleNamespace(provider="gmail")},
     )
 
@@ -107,8 +107,8 @@ def test_single_account_can_be_used_without_account_option(monkeypatch):
 
 def test_multiple_accounts_require_an_explicit_account(monkeypatch):
     monkeypatch.setattr(
-        cli.AccountService,
-        "list",
+        cli.CommandHandlers,
+        "accounts",
         lambda self: {
             "one@example.com": SimpleNamespace(provider="gmail"),
             "two@example.com": SimpleNamespace(provider="imap"),
@@ -140,15 +140,20 @@ def test_nested_commands_are_discoverable():
 
 
 def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
-    class Service:
-        def list(self, account):
+    from email_agent.db import StoredDraft
+
+    class Handlers:
+        def list_drafts(self, account):
             return [
-                {
-                    "message_id": 175,
-                    "recipient": "sender@example.com",
-                    "subject": "Re: A question",
-                    "body": "Suggested answer.",
-                }
+                StoredDraft(
+                    message_id=175,
+                    account_id="person@example.com",
+                    source_message_id="provider-175",
+                    recipient="sender@example.com",
+                    subject="Re: A question",
+                    body="Suggested answer.",
+                    status="generated",
+                )
             ]
 
         def source_message(self, message_id):
@@ -160,7 +165,7 @@ def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
                 content="Original email body.",
             )
 
-    monkeypatch.setattr(cli, "DraftService", lambda *args, **kwargs: Service())
+    monkeypatch.setattr(cli, "CommandHandlers", Handlers)
 
     result = runner.invoke(app, ["drafts", "review"], input="q\n")
 

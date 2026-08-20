@@ -1,6 +1,9 @@
 import typer
 
+from email_agent.db import StoredDraft
+from email_agent.models import EmailMessage
 from email_agent.services import PRIORITY_GROUP_ORDER, PriorityGroup, ProcessingFailure
+from email_agent.services.messages import MessageDetails
 
 GROUP_COLORS = {
     PriorityGroup.URGENT: typer.colors.BRIGHT_RED,
@@ -157,3 +160,51 @@ def render_inbox_items(items) -> None:
                 draft_ready=item.draft_ready,
                 color=GROUP_COLORS[group],
             )
+
+
+def render_message_details(details: MessageDetails, *, show_confidence: bool = True) -> None:
+    """Render a provider message and its typed classification."""
+    message = details.message
+    typer.echo(f"From: {message.from_name or message.from_address}")
+    typer.echo(f"Subject: {message.subject}\n")
+    typer.echo(message.content or "(No plain-text body)")
+    classification = details.classification
+    if classification is None:
+        return
+    typer.echo(f"\nCategory: {category_name(classification.category)}")
+    typer.echo(f"Priority: {classification.priority.upper()}")
+    if show_confidence:
+        typer.echo(f"Confidence: {classification.confidence:.2f}")
+    typer.echo(f"Summary: {classification.summary}")
+    if classification.requires_escalation:
+        typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
+        typer.echo(classification.escalation_reason or "Review required.")
+
+
+def render_draft_list(drafts: list[StoredDraft]) -> None:
+    """Render pending draft summaries."""
+    for draft in drafts:
+        typer.echo(f"{draft.message_id}: To {draft.recipient} — {draft.subject}")
+
+
+def render_draft(draft: StoredDraft) -> None:
+    """Render one complete persisted draft."""
+    typer.echo(
+        f"To: {draft.recipient}\nSubject: {draft.subject}\n\n{draft.body}\n\nStatus: {draft.status}"
+    )
+
+
+def render_review_item(draft: StoredDraft, source: EmailMessage | None, error: str | None) -> None:
+    """Render one draft beside its source message when available."""
+    typer.secho(f"\nDraft #{draft.message_id}", fg=typer.colors.CYAN, bold=True)
+    if error:
+        typer.secho(f"Original message unavailable: {error}", fg=typer.colors.RED)
+    elif source:
+        typer.secho("\nOriginal message", bold=True)
+        typer.echo(f"From: {source.from_name or source.from_address}")
+        typer.echo(f"Subject: {source.subject}")
+        typer.echo(f"Received: {source.received_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}")
+        typer.echo(f"\n{source.content or '(No plain-text body)'}")
+    typer.secho("\nSuggested reply", fg=typer.colors.GREEN, bold=True)
+    typer.echo(f"To: {draft.recipient}")
+    typer.echo(f"Subject: {draft.subject}\n\n{draft.body}\n")

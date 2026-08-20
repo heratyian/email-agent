@@ -4,7 +4,11 @@ import logging
 from dataclasses import dataclass
 from time import perf_counter
 
+from email_agent.ai.agents import EmailAgents
+from email_agent.config import AgentConfig
+from email_agent.db import Database
 from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
+from email_agent.providers import MailProvider
 from email_agent.services.category_routing import category_destination
 
 logger = logging.getLogger(__name__)
@@ -33,14 +37,19 @@ class ProcessingFailure:
 class ProcessingService:
     """Classify, draft, synchronize, and persist recent messages."""
 
-    def __init__(self, account_id, agent, provider, agents, database):
-        self.account_id, self.agent, self.provider, self.agents, self.database = (
-            account_id,
-            agent,
-            provider,
-            agents,
-            database,
-        )
+    def __init__(
+        self,
+        account_id: str,
+        agent: AgentConfig,
+        provider: MailProvider,
+        agents: EmailAgents,
+        database: Database,
+    ):
+        self.account_id = account_id
+        self.agent = agent
+        self.provider = provider
+        self.agents = agents
+        self.database = database
 
     def process(self, limit: int = 20) -> list[ProcessedEmail | ProcessingFailure]:
         """Process messages not already completed in the local database."""
