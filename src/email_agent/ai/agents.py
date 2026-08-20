@@ -28,6 +28,10 @@ class EmailAgents:
             system_prompt=self.classification_prompt,
             response_format=EmailClassification,
         )
+
+        # TODO
+        # Provides tools to drafting agent to improve output
+        # eg search_mail, lookup_contact, search_documents, get_calendar_availability, etc.
         self.drafter = create_agent(
             model=model,
             tools=[],
