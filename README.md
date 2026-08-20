@@ -77,6 +77,27 @@ To inspect the exact payload sent to the configured model, add `--trace-model` a
 uv run email-agent inbox --account you@gmail.com --trace-model
 ```
 
+### LangSmith tracing
+
+Email Agent's LangChain model calls can be inspected in
+[LangSmith](https://docs.langchain.com/langsmith/observability-quickstart). Add a
+LangSmith API key to `.env`, enable tracing, and choose a project name:
+
+```dotenv
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-langsmith-api-key
+LANGSMITH_PROJECT=email-agent
+```
+
+LangSmith tracing is independent of `--trace-model`: it sends traces to LangSmith
+rather than printing exact p prompayloads in the terminal. Traces may contain complete
+email content, systemts, and generated drafts. Enable it only for a trusted
+LangSmith workspace whose retention and access policies are appropriate for the
+mailbox. Set `LANGSMITH_TRACING=false` to disable it. To retain trace structure while
+hiding model inputs and outputs, also set `LANGSMITH_HIDE_INPUTS=true` and
+`LANGSMITH_HIDE_OUTPUTS=true`; see the
+[LangSmith data-masking documentation](https://docs.langchain.com/langsmith/mask-inputs-outputs).
+
 `-v`, `-vv`, and `--trace-model` are global and may appear before the command, after a nested command, or after command-specific options. They can also be combined:
 
 ```bash
