@@ -83,6 +83,7 @@ Beautiful code in this application is explicit, cohesive, and calm.
 - Comments should explain why a decision exists, especially a safety constraint or
   provider quirk. Do not narrate what readable code already says.
 - Match surrounding style and let Ruff enforce mechanical formatting.
+- Use Simplified Technical English for documentation
 
 ## Trust developers with sharp tools, and preserve safety boundaries
 
@@ -90,7 +91,6 @@ Powerful operations are acceptable when their scope and consequences are explici
 This application handles private email, so trust must coexist with strict product
 safety.
 
-- Never add an email send path. Email Agent may generate and upload drafts only.
 - Keep provider calls, persistence, retries, loops, and side effects in deterministic
   Python services.
 - Models may provide bounded judgment through validated structured output. They must
