@@ -309,7 +309,7 @@ def generate(
     except (LookupError, RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho(f"✓ Draft ready for message #{message_id}.", fg=typer.colors.GREEN, bold=True)
-    typer.echo(f"To: {draft.to[0]}\nSubject: {draft.subject}")
+    typer.echo(f"To: {draft.recipient}\nSubject: {draft.subject}")
     typer.echo("Review it with: email-agent drafts review")
 
 

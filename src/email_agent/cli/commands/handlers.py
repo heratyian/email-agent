@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from email_agent.config import AccountConfig, Settings
 from email_agent.db import Database, StoredDraft
 from email_agent.generators import GeneratedAccount
-from email_agent.models import Draft, EmailMessage
+from email_agent.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.services import (
     AccountService,
@@ -67,7 +67,7 @@ class CommandHandlers:
     def show_draft(self, message_id: int) -> StoredDraft:
         return DraftService(Database(self.settings.database_path)).get(message_id)
 
-    def generate_draft(self, message_id: int, instruction: str | None = None) -> Draft:
+    def generate_draft(self, message_id: int, instruction: str | None = None) -> StoredDraft:
         database = Database(self.settings.database_path)
         row = database.show_message(message_id)
         if not row:

@@ -4,9 +4,10 @@ import logging
 from dataclasses import dataclass
 
 from email_agent.ai.agents import EmailAgents
+from email_agent.ai.models import EmailClassification
 from email_agent.config import AgentConfig
 from email_agent.db import Database
-from email_agent.models import EmailClassification, EmailMessage
+from email_agent.models import EmailMessage
 from email_agent.providers import MailProvider
 from email_agent.services.category_routing import category_destination
 

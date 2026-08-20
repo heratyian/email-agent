@@ -4,6 +4,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from email_agent.ai.models import DraftReply, EmailClassification
 from email_agent.db.migrations import migrate
 from email_agent.db.records import (
     OrganizationCandidate,
@@ -17,7 +18,7 @@ from email_agent.db.repositories import (
     ProcessingRunRepository,
     mark_category_synced,
 )
-from email_agent.models import Draft, DraftReply, EmailClassification, EmailMessage
+from email_agent.models import EmailMessage
 from email_agent.providers.base import CategorySyncResult, CategorySyncState
 
 
@@ -190,46 +191,6 @@ class Database:
                 "UPDATE messages SET classified_at=CURRENT_TIMESTAMP WHERE id=?", (message_id,)
             )
 
-    def save_result(
-        self,
-        message: EmailMessage,
-        classification: EmailClassification,
-        draft_reply: DraftReply | None,
-    ) -> tuple[int, Draft | None]:
-        """Persist a pending result before any external mailbox changes."""
-        with self.connect() as db:
-            message_id = self._upsert_message(db, message, processed=False)
-            self._save_classification(db, message_id, classification)
-            draft = None
-            if draft_reply:
-                existing_draft = db.execute(
-                    "SELECT 1 FROM drafts WHERE message_id=? LIMIT 1", (message_id,)
-                ).fetchone()
-                if not existing_draft:
-                    draft = Draft(
-                        account_id=message.account_id,
-                        source_message_id=message.provider_id,
-                        to=[draft_reply.recipient],
-                        subject=draft_reply.subject,
-                        body=draft_reply.body,
-                    )
-                    db.execute(
-                        "INSERT INTO drafts(id,message_id,account_id,source_message_id,recipient,subject,body,status,metadata,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                        (
-                            str(draft.id),
-                            message_id,
-                            draft.account_id,
-                            draft.source_message_id,
-                            draft_reply.recipient,
-                            draft.subject,
-                            draft.body,
-                            draft.status,
-                            draft_reply.model_dump_json(),
-                            draft.created_at.isoformat(),
-                        ),
-                    )
-        return message_id, draft
-
     def complete_result(
         self,
         message_id: int,
@@ -290,7 +251,7 @@ class Database:
         account_id: str,
         source_message_id: str,
         reply: DraftReply,
-    ) -> Draft:
+    ) -> StoredDraft:
         """Replace the local review suggestion without touching uploaded drafts."""
         return self.drafts.replace(message_id, account_id, source_message_id, reply)
 

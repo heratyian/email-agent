@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 
+from email_agent.ai.models import DraftReply, EmailClassification
 from email_agent.config import Settings
 from email_agent.db import Database
-from email_agent.models import DraftReply, EmailClassification, EmailMessage, EmailThread
+from email_agent.models import EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
 from email_agent.services.drafts import reply_subject
@@ -90,7 +91,10 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
         reasoning_summary="Answer directly.",
         confidence=0.9,
     )
-    database.save_result(source, classification(), reply)
+    local_id = database.save_triage(source, classification())
+    database.replace_generated_draft(
+        local_id, source.account_id, source.provider_id, reply
+    )
     settings = write_settings(tmp_path)
 
     class Provider:
@@ -124,9 +128,12 @@ def test_reply_subject_uses_original_subject_without_duplicate_prefix():
 
 def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
     database = Database(tmp_path / "email-agent.db")
-    database.save_result(
-        message(),
-        classification(),
+    source = message()
+    local_id = database.save_triage(source, classification())
+    database.replace_generated_draft(
+        local_id,
+        source.account_id,
+        source.provider_id,
         DraftReply(
             recipient="sender@example.com",
             subject="Re: Question",

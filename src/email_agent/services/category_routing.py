@@ -1,4 +1,4 @@
-from email_agent.models import EmailClassification
+from email_agent.ai.models import EmailClassification
 
 
 def category_destination(account, classification: EmailClassification) -> str | None:

@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 
+from email_agent.ai.models import EmailClassification
 from email_agent.config import AgentConfig
 from email_agent.db import OrganizationCandidate
-from email_agent.models import EmailClassification, EmailMessage, EmailThread
+from email_agent.models import EmailMessage, EmailThread
 from email_agent.services.organization import OrganizationService, OrganizationStatus
 
 

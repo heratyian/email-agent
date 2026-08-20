@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from email_agent.ai.models import DraftReply
 from email_agent.db.records import StoredDraft, stored_draft
 from email_agent.db.repositories.base import ConnectionContext
-from email_agent.models import Draft, DraftReply
 
 
 class DraftRepository:
@@ -31,14 +34,9 @@ class DraftRepository:
         account_id: str,
         source_message_id: str,
         reply: DraftReply,
-    ) -> Draft:
-        draft = Draft(
-            account_id=account_id,
-            source_message_id=source_message_id,
-            to=[reply.recipient],
-            subject=reply.subject,
-            body=reply.body,
-        )
+    ) -> StoredDraft:
+        draft_id = str(uuid4())
+        created_at = datetime.now(UTC).isoformat()
         with self.connect() as connection:
             connection.execute(
                 "DELETE FROM drafts WHERE message_id=? AND status='generated'", (message_id,)
@@ -49,19 +47,27 @@ class DraftRepository:
                        subject, body, status, metadata, created_at
                    ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    str(draft.id),
+                    draft_id,
                     message_id,
                     account_id,
                     source_message_id,
                     reply.recipient,
                     reply.subject,
                     reply.body,
-                    draft.status,
+                    "generated",
                     reply.model_dump_json(),
-                    draft.created_at.isoformat(),
+                    created_at,
                 ),
             )
-        return draft
+        return StoredDraft(
+            message_id=message_id,
+            account_id=account_id,
+            source_message_id=source_message_id,
+            recipient=reply.recipient,
+            subject=reply.subject,
+            body=reply.body,
+            status="generated",
+        )
 
     def delete_generated(self, message_id: int) -> int:
         with self.connect() as connection:

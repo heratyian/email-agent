@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from email_agent.models import EmailClassification
+from email_agent.ai.models import EmailClassification
 
 
 @dataclass(frozen=True)

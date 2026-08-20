@@ -1,9 +1,10 @@
 import logging
 
 from email_agent.ai.agents import EmailAgents
+from email_agent.ai.models import EmailClassification
 from email_agent.config import Settings
 from email_agent.db import Database, StoredDraft
-from email_agent.models import Draft, EmailClassification, EmailMessage
+from email_agent.models import EmailMessage
 from email_agent.providers import create_mail_provider
 from email_agent.providers.base import MailProvider
 
@@ -54,7 +55,7 @@ class DraftService:
         provider: MailProvider,
         agents: EmailAgents,
         instruction: str | None = None,
-    ) -> Draft:
+    ) -> StoredDraft:
         """Generate or replace a local reply suggestion for one tracked message."""
         message_row = self.database.show_message(message_id)
         if not message_row:

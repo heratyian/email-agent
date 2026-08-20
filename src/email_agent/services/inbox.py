@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from email_agent.ai.models import EmailClassification
 from email_agent.db import Database
-from email_agent.models import EmailClassification, EmailMessage
+from email_agent.models import EmailMessage
 from email_agent.providers import MailProvider
 
 logger = logging.getLogger(__name__)
