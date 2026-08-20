@@ -12,7 +12,8 @@ INBOX_COLUMNS = (
     ("FROM", 22),
     ("SUBJECT", 42),
     ("CATEGORY", 24),
-    ("DRAFT", 7),
+    ("REPLY?", 6),
+    ("DRAFT?", 7),
 )
 
 
@@ -67,6 +68,7 @@ def inbox_table_row(
     sender: str,
     subject: str,
     category: str | None,
+    requires_reply: bool | None,
     draft_ready: bool,
     color: str | None = None,
 ) -> None:
@@ -77,6 +79,7 @@ def inbox_table_row(
         sender,
         subject,
         category_name(category),
+        "YES" if requires_reply else "NO" if requires_reply is False else "—",
         "READY" if draft_ready else "—",
     )
     typer.secho(
@@ -99,6 +102,7 @@ def render_inbox_items(items) -> None:
             sender=item.message.from_name or item.message.from_address,
             subject=item.message.subject,
             category=classification.category if classification else None,
+            requires_reply=classification.requires_reply if classification else None,
             draft_ready=item.draft_ready,
             color=priority_color(priority) if classification else None,
         )
@@ -119,6 +123,7 @@ def render_classification_results(results) -> int:
                 sender=result.message.from_name or result.message.from_address,
                 subject=f"{result.message.subject}: {result.error}",
                 category=None,
+                requires_reply=None,
                 draft_ready=False,
                 color=typer.colors.RED,
             )
@@ -130,6 +135,7 @@ def render_classification_results(results) -> int:
             sender=result.message.from_name or result.message.from_address,
             subject=result.message.subject,
             category=result.classification.category,
+            requires_reply=result.classification.requires_reply,
             draft_ready=result.draft_ready,
             color=priority_color(result.classification.priority),
         )

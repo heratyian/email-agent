@@ -19,15 +19,18 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
         sender="Karen Hall",
         subject="40 hours for Big Green Company",
         category="agent/solicitations",
+        requires_reply=True,
         draft_ready=True,
     )
 
     lines = capsys.readouterr().out.splitlines()
     assert all(label in lines[0] for label in ("ID", "PRIORITY", "FROM", "SUBJECT", "CATEGORY"))
+    assert "REPLY" in lines[0]
     assert "DRAFT" in lines[0]
     assert "#175" in lines[2]
     assert "Karen Hall" in lines[2]
     assert "agent/solicitations" in lines[2]
+    assert "YES" in lines[2]
     assert "READY" in lines[2]
 
 
