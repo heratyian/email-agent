@@ -45,8 +45,8 @@ class GlobalOptionsAnywhereGroup(TyperGroup):
         remaining = [value for value in before_separator if value not in global_options]
         return [*global_options, *remaining, *separator, *after_separator]
 
-    def parse_args(self, ctx, args: list[str]) -> list[str]:
-        return super().parse_args(ctx, self._normalize_verbose_args(args))
+    def parse_args(self, typer_context, args: list[str]) -> list[str]:
+        return super().parse_args(typer_context, self._normalize_verbose_args(args))
 
 
 app = typer.Typer(
@@ -73,7 +73,7 @@ app.add_typer(message_app, name="message")
 
 @app.callback()
 def main(
-    ctx: typer.Context,
+    typer_context: typer.Context,
     verbose: Annotated[
         int,
         typer.Option(
@@ -96,7 +96,7 @@ def main(
     configure_model_tracing(trace_model)
     if trace_model:
         warn_model_tracing()
-    if ctx.invoked_subcommand is None:
+    if typer_context.invoked_subcommand is None:
         from email_agent.cli.shell import run_shell
 
         run_shell(verbosity=verbose, trace_model=trace_model)
@@ -116,9 +116,9 @@ def _account_id(requested: str | None) -> str:
 
 
 @account_app.callback()
-def account(ctx: typer.Context):
+def account(typer_context: typer.Context):
     """Add, list, and validate mailbox accounts."""
-    if ctx.invoked_subcommand is None:
+    if typer_context.invoked_subcommand is None:
         list_accounts()
 
 
@@ -267,9 +267,9 @@ def inbox(
 
 
 @drafts_app.callback()
-def drafts(ctx: typer.Context, account: Annotated[str | None, typer.Option()] = None):
+def drafts(typer_context: typer.Context, account: Annotated[str | None, typer.Option()] = None):
     """Review and upload suggested replies."""
-    if ctx.invoked_subcommand is not None:
+    if typer_context.invoked_subcommand is not None:
         return
     handlers = CommandHandlers()
     if account:
