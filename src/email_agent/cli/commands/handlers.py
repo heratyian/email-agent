@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from email_agent.config import AccountConfig, Settings
 from email_agent.db import Database, StoredDraft
 from email_agent.generators import GeneratedAccount
-from email_agent.models import EmailMessage
+from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.services import (
     AccountService,

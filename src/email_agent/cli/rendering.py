@@ -2,7 +2,7 @@ import typer
 from wcwidth import wcswidth, wcwidth
 
 from email_agent.db import StoredDraft
-from email_agent.models import EmailMessage
+from email_agent.providers.models import EmailMessage
 from email_agent.services import ClassificationFailure
 from email_agent.services.messages import MessageDetails
 

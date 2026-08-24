@@ -11,7 +11,7 @@ from email_agent.ai.models import DraftReply, EmailClassification
 from email_agent.ai.prompts import format_thread, system_prompt
 from email_agent.config import AgentConfig
 from email_agent.diagnostics import model_tracing_enabled
-from email_agent.models import EmailMessage, EmailThread
+from email_agent.providers.models import EmailMessage, EmailThread
 
 logger = logging.getLogger(__name__)
 

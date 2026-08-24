@@ -5,10 +5,10 @@ from email import message_from_bytes
 from email.policy import default
 
 from email_agent.config import AccountConfig
-from email_agent.models import EmailMessage
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.gmail import GmailProvider
 from email_agent.providers.imap import ImapProvider
+from email_agent.providers.models import EmailMessage
 
 
 def _b64(text: str) -> str:

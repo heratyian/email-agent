@@ -8,9 +8,9 @@ from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 from pathlib import Path
 
 from email_agent.config import AccountConfig
-from email_agent.models import EmailMessage, EmailThread
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.common import html_to_text
+from email_agent.providers.models import EmailMessage, EmailThread
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",

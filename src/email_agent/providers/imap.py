@@ -11,9 +11,9 @@ from email.message import EmailMessage as MimeMessage
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 from email_agent.config import AccountConfig
-from email_agent.models import EmailMessage, EmailThread
 from email_agent.providers.base import CategorySyncResult, CategorySyncState
 from email_agent.providers.common import html_to_text
+from email_agent.providers.models import EmailMessage, EmailThread
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from email_agent.ai.models import DraftReply, EmailClassification
 from email_agent.config import Settings
 from email_agent.db import Database
-from email_agent.models import EmailMessage, EmailThread
+from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
 from email_agent.services.drafts import reply_subject

@@ -4,9 +4,9 @@ from email_agent.ai.agents import EmailAgents
 from email_agent.ai.models import EmailClassification
 from email_agent.config import Settings
 from email_agent.db import Database, StoredDraft
-from email_agent.models import EmailMessage
 from email_agent.providers import create_mail_provider
 from email_agent.providers.base import MailProvider
+from email_agent.providers.models import EmailMessage
 
 logger = logging.getLogger(__name__)
 

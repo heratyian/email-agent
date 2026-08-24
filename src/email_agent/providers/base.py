@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from email_agent.models import EmailMessage, EmailThread
+from email_agent.providers.models import EmailMessage, EmailThread
 
 
 @dataclass(frozen=True)

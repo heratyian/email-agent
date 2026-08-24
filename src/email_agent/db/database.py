@@ -18,8 +18,8 @@ from email_agent.db.repositories import (
     ProcessingRunRepository,
     mark_category_synced,
 )
-from email_agent.models import EmailMessage
 from email_agent.providers.base import CategorySyncResult, CategorySyncState
+from email_agent.providers.models import EmailMessage
 
 
 class Database:

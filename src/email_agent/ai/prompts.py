@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from email_agent.config import AgentConfig
-from email_agent.models import EmailMessage, EmailThread
+from email_agent.providers.models import EmailMessage, EmailThread
 
 CLASSIFICATION_INSTRUCTIONS = """Classify the email using the required schema.
 Choose a category only when one configured value clearly fits. Return null when

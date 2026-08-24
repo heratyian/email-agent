@@ -5,8 +5,8 @@ import pytest
 from email_agent.ai.models import EmailClassification
 from email_agent.config import AgentConfig
 from email_agent.db import Database
-from email_agent.models import EmailMessage, EmailThread
 from email_agent.providers.base import CategorySyncResult
+from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.services.category_routing import category_destination
 from email_agent.services.classification import ClassificationFailure, ClassificationService
 from email_agent.services.inbox import InboxService
