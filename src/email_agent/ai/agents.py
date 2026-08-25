@@ -11,6 +11,7 @@ from email_agent.ai.outputs import ClassificationOutput, DraftOutput
 from email_agent.ai.prompts import format_thread, system_prompt
 from email_agent.config import AgentConfig
 from email_agent.diagnostics import model_tracing_enabled
+from email_agent.privacy import redact
 from email_agent.providers.models import EmailMessage, EmailThread
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,8 @@ class EmailAgents:
 
     def __init__(self, root: Path, agent: AgentConfig, model):
         self.agent = agent
-        self.classification_prompt = system_prompt(root, agent, "classify")
-        self.draft_prompt = system_prompt(root, agent, "reply")
+        self.classification_prompt = redact(system_prompt(root, agent, "classify")).sanitized_text
+        self.draft_prompt = redact(system_prompt(root, agent, "reply")).sanitized_text
         self.classifier = create_agent(
             model=model,
             tools=[],
@@ -41,7 +42,9 @@ class EmailAgents:
         )
 
     def classify(self, message: EmailMessage, thread: EmailThread) -> ClassificationOutput:
-        content = format_thread(thread, message)
+        content = redact(
+            format_thread(thread, message), known_names=self._known_names(thread, message)
+        ).sanitized_text
         logger.info(
             "Starting classification with %s:%s",
             self.agent.model.provider,
@@ -82,6 +85,8 @@ class EmailAgents:
         )
         if instruction:
             content += f"\n\nOne-time drafting guidance:\n{instruction.strip()}"
+        redaction = redact(content, known_names=self._known_names(thread, message))
+        content = redaction.sanitized_text
         logger.info(
             "Starting draft generation with %s:%s",
             self.agent.model.provider,
@@ -102,9 +107,27 @@ class EmailAgents:
             len(draft.body),
         )
         self._trace_response("draft", draft.model_dump())
+        draft = draft.model_copy(
+            update={
+                "recipient": message.from_address,
+                "subject": redaction.placeholder_map.restore(draft.subject),
+                "body": redaction.placeholder_map.restore(draft.body),
+                "reasoning_summary": redaction.placeholder_map.restore(draft.reasoning_summary),
+                "escalation_reason": (
+                    redaction.placeholder_map.restore(draft.escalation_reason)
+                    if draft.escalation_reason
+                    else None
+                ),
+            }
+        )
         draft.requires_escalation |= classification.requires_escalation
         draft.escalation_reason = draft.escalation_reason or classification.escalation_reason
         return draft
+
+    @staticmethod
+    def _known_names(thread: EmailThread, current: EmailMessage) -> list[str]:
+        messages = [*thread.messages, current]
+        return [message.from_name for message in messages if message.from_name]
 
     @staticmethod
     def _trace_payload(task: str, system: str, user: str) -> None:
