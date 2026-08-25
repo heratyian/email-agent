@@ -67,7 +67,8 @@ def make_agent() -> AgentConfig:
     return AgentConfig.model_validate(
         {
             "model": {"provider": "openai", "model": "test-model"},
-            "system_prompt": "prompts/test/system.md",
+            "classification_prompt": "prompts/test/classification.md",
+            "draft_prompt": "prompts/test/draft.md",
         }
     )
 

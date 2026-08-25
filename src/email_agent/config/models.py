@@ -31,7 +31,8 @@ class AgentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: ModelConfig
-    system_prompt: str
+    classification_prompt: str
+    draft_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
     @field_validator("categories")
@@ -69,7 +70,8 @@ class AccountConfig(BaseModel):
     imap_port: int = 993
     category_action: Literal["copy", "move"] | None = None
     model: ModelConfig
-    system_prompt: str
+    classification_prompt: str
+    draft_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
     @field_validator("categories")
@@ -82,7 +84,8 @@ class AccountConfig(BaseModel):
         """Return the internal agent view used by classification and drafting."""
         return AgentConfig(
             model=self.model,
-            system_prompt=self.system_prompt,
+            classification_prompt=self.classification_prompt,
+            draft_prompt=self.draft_prompt,
             categories=self.categories,
         )
 

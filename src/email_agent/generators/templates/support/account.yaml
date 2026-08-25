@@ -2,7 +2,8 @@ model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
-system_prompt: "{{PROMPT_DIR}}/system.md"
+classification_prompt: "{{PROMPT_DIR}}/classification.md"
+draft_prompt: "{{PROMPT_DIR}}/draft.md"
 categories:
   action: A customer request that needs a reply or team action.
   important: Security, legal, billing, or escalated customer communication.

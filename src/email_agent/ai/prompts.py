@@ -52,16 +52,19 @@ def format_thread(thread: EmailThread, current: EmailMessage) -> str:
     return "\n\n---\n\n".join(chunks)
 
 
-def system_prompt(root: Path, agent: AgentConfig, task: str) -> str:
-    """Build a task prompt from one user system prompt and internal contracts."""
-    identity = load_prompt(root, agent.system_prompt)
+def classification_system_prompt(root: Path, agent: AgentConfig) -> str:
+    """Build the classification prompt from application and user instructions."""
+    custom_instructions = load_prompt(root, agent.classification_prompt)
     categories = "\n".join(
         f"- {key}: {description}" for key, description in agent.categories.items()
     )
-    if task == "classify":
-        task_prompt = f"{CLASSIFICATION_INSTRUCTIONS}\n\nConfigured categories:\n{categories}"
-    elif task == "reply":
-        task_prompt = DRAFT_INSTRUCTIONS
-    else:
-        raise ValueError(f"Unknown agent task: {task}")
-    return f"{SAFETY_INSTRUCTIONS}\n\n{identity}\n\n{task_prompt}"
+    return (
+        f"{SAFETY_INSTRUCTIONS}\n\n{CLASSIFICATION_INSTRUCTIONS}\n\n"
+        f"Configured categories:\n{categories}\n\n{custom_instructions}"
+    )
+
+
+def draft_system_prompt(root: Path, agent: AgentConfig) -> str:
+    """Build the drafting prompt from application and user instructions."""
+    custom_instructions = load_prompt(root, agent.draft_prompt)
+    return f"{SAFETY_INSTRUCTIONS}\n\n{DRAFT_INSTRUCTIONS}\n\n{custom_instructions}"

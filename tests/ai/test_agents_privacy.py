@@ -21,8 +21,10 @@ class RecordingAgent:
 
 
 def build_agents(tmp_path, monkeypatch):
-    prompt = tmp_path / "system.md"
-    prompt.write_text("Assist the mailbox owner.")
+    classification_prompt = tmp_path / "classification.md"
+    classification_prompt.write_text("Escalate sensitive messages.")
+    draft_prompt = tmp_path / "draft.md"
+    draft_prompt.write_text("Write concise replies.")
     created = [
         RecordingAgent(
             {
@@ -47,7 +49,8 @@ def build_agents(tmp_path, monkeypatch):
     config = AgentConfig.model_validate(
         {
             "model": {"provider": "openai", "model": "test"},
-            "system_prompt": "system.md",
+            "classification_prompt": "classification.md",
+            "draft_prompt": "draft.md",
             "categories": {"action": "Requires a response."},
         }
     )

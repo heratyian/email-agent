@@ -14,8 +14,9 @@ uv run email-agent account add you@gmail.com \
   --model gpt-5.4-mini
 ```
 
-The generator creates or updates `accounts.yaml` and creates an editable system
-prompt under `prompts/`. Both locations are ignored by Git.
+The generator creates or updates `accounts.yaml` and creates editable
+classification and drafting prompts under `prompts/`. Both locations are ignored
+by Git.
 
 Validate configuration before connecting to a provider:
 
@@ -29,7 +30,8 @@ Every account defines:
 
 - `provider`: `gmail` or `imap`.
 - `model`: the model provider, model name, temperature, and optional base URL.
-- `system_prompt`: the prompt file used for classification and drafting.
+- `classification_prompt`: account-specific classification and escalation guidance.
+- `draft_prompt`: account-specific tone, style, and drafting guidance.
 - `categories`: category names and descriptions.
 
 Gmail accounts also define paths for the OAuth client and token files. Keep these
@@ -62,11 +64,14 @@ from the project root.
 Raw email bodies are not stored in this database. Commands that display a message
 retrieve its current body from the provider.
 
-## System prompts
+## Prompts
 
-The system prompt defines account-specific behavior, context, tone, reply style,
-and escalation judgment. Category descriptions belong in `accounts.yaml`; do not
-duplicate the category taxonomy in the prompt.
+The application always supplies its safety rules and task instructions. The
+classification prompt adds account-specific classification and escalation
+guidance. The draft prompt adds account-specific tone, style, and reply guidance.
+
+Category descriptions belong in `accounts.yaml`; do not duplicate the category
+taxonomy in either prompt.
 
 ## Categories
 

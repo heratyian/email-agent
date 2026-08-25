@@ -181,13 +181,17 @@ def add_account(
         typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
     else:
         typer.echo("Set the generated username and password environment variables in .env.")
-    typer.secho(f"Created system prompt: {generated.system_prompt.relative_to(PROJECT_ROOT)}")
+    typer.secho(
+        "Created classification prompt: "
+        f"{generated.classification_prompt.relative_to(PROJECT_ROOT)}"
+    )
+    typer.secho(f"Created draft prompt: {generated.draft_prompt.relative_to(PROJECT_ROOT)}")
     typer.echo(f"\nNext: email-agent inbox --account {email}")
 
 
 @account_app.command("validate")
 def validate_config():
-    """Validate mailbox accounts, model settings, categories, and system prompts."""
+    """Validate mailbox accounts, model settings, categories, and prompts."""
     try:
         account_ids = CommandHandlers().validate_accounts()
     except ValueError as exc:

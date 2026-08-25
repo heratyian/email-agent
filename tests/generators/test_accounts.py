@@ -11,7 +11,7 @@ from email_agent.generators import (
 
 
 @pytest.mark.parametrize("template", list(AgentTemplate))
-def test_generates_flat_account_with_system_prompt(tmp_path, template):
+def test_generates_flat_account_with_separate_prompts(tmp_path, template):
     result = generate_account(
         tmp_path,
         "person@example.com",
@@ -24,8 +24,10 @@ def test_generates_flat_account_with_system_prompt(tmp_path, template):
     assert "email" not in account
     assert "agent" not in account
     assert account["model"]["model"] == "test-model"
-    assert account["system_prompt"].startswith("prompts/person-example-com/")
-    assert result.system_prompt.is_file()
+    assert account["classification_prompt"].endswith("/classification.md")
+    assert account["draft_prompt"].endswith("/draft.md")
+    assert result.classification_prompt.is_file()
+    assert result.draft_prompt.is_file()
 
 
 def test_generates_imap_credentials_as_environment_references(tmp_path):

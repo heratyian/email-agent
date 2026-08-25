@@ -12,7 +12,7 @@ from email_agent.config import AccountConfig
 
 
 class AgentTemplate(StrEnum):
-    """Built-in system-prompt templates available during account creation."""
+    """Built-in prompt templates available during account creation."""
 
     PERSONAL = "personal"
     SUPPORT = "support"
@@ -42,11 +42,12 @@ class CategoryAction(StrEnum):
 
 @dataclass(frozen=True)
 class GeneratedAccount:
-    """Configuration and system prompt created for one account."""
+    """Configuration and prompts created for one account."""
 
     path: Path
     account_id: str
-    system_prompt: Path
+    classification_prompt: Path
+    draft_prompt: Path
 
 
 def _validate_email(value: str) -> None:
@@ -75,13 +76,14 @@ def generate_account(
     category_action: CategoryAction | None = None,
     force: bool = False,
 ) -> GeneratedAccount:
-    """Create one flat email-address account and its system prompt."""
+    """Create one flat email-address account and its prompts."""
     root = root.resolve()
     _validate_email(email)
     path = root / "accounts.yaml"
     slug = _slug(email)
     prompt_dir = root / "prompts" / slug
-    system_prompt = prompt_dir / "system.md"
+    classification_prompt = prompt_dir / "classification.md"
+    draft_prompt = prompt_dir / "draft.md"
 
     raw = yaml.safe_load(path.read_text()) if path.is_file() else None
     if raw is None:
@@ -90,10 +92,11 @@ def generate_account(
         raise TypeError("accounts.yaml must contain an 'accounts' mapping")
     if email in raw["accounts"] and not force:
         raise FileExistsError(f"Account '{email}' already exists in accounts.yaml")
-    if system_prompt.exists() and not force:
-        raise FileExistsError(
-            f"Refusing to overwrite existing file: {system_prompt.relative_to(root)}"
-        )
+    for prompt in (classification_prompt, draft_prompt):
+        if prompt.exists() and not force:
+            raise FileExistsError(
+                f"Refusing to overwrite existing file: {prompt.relative_to(root)}"
+            )
 
     template_directory = "support" if template is AgentTemplate.SUPPORT else template.value
     template_root = files("email_agent.generators").joinpath("templates", template_directory)
@@ -135,6 +138,14 @@ def generate_account(
 
     raw["accounts"][email] = account
     prompt_dir.mkdir(parents=True, exist_ok=True)
-    system_prompt.write_text(template_root.joinpath("system.md").read_text())
+    classification_prompt.write_text(
+        template_root.joinpath("classification.md").read_text()
+    )
+    draft_prompt.write_text(template_root.joinpath("draft.md").read_text())
     path.write_text(yaml.safe_dump(raw, sort_keys=False))
-    return GeneratedAccount(path=path, account_id=email, system_prompt=system_prompt)
+    return GeneratedAccount(
+        path=path,
+        account_id=email,
+        classification_prompt=classification_prompt,
+        draft_prompt=draft_prompt,
+    )

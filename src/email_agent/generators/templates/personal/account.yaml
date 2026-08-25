@@ -2,7 +2,8 @@ model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
-system_prompt: "{{PROMPT_DIR}}/system.md"
+classification_prompt: "{{PROMPT_DIR}}/classification.md"
+draft_prompt: "{{PROMPT_DIR}}/draft.md"
 categories:
   action: Requires a reply, decision, or other action from me.
   important: Important information that deserves my attention.

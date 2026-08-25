@@ -22,7 +22,8 @@ def account():
         agent=AgentConfig.model_validate(
             {
                 "model": {"provider": "openai", "model": "test"},
-                "system_prompt": "prompts/test/system.md",
+                "classification_prompt": "prompts/test/classification.md",
+                "draft_prompt": "prompts/test/draft.md",
                 "categories": {"action": "Requires action."},
             }
         )

@@ -16,12 +16,14 @@ accounts:
   person@example.com:
     provider: gmail
     model: {provider: openai, model: test}
-    system_prompt: prompts/person/system.md
+    classification_prompt: prompts/person/classification.md
+    draft_prompt: prompts/person/draft.md
 """
     )
-    prompt = root / "prompts/person/system.md"
-    prompt.parent.mkdir(parents=True)
-    prompt.write_text("Help with email.")
+    prompt_dir = root / "prompts/person"
+    prompt_dir.mkdir(parents=True)
+    (prompt_dir / "classification.md").write_text("Escalate sensitive messages.")
+    (prompt_dir / "draft.md").write_text("Write concise replies.")
     return Settings(root)
 
 

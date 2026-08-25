@@ -14,7 +14,8 @@ accounts:
     credentials_file: secrets/credentials.json
     token_file: secrets/token.json
     model: {provider: openai, model: test-model}
-    system_prompt: prompts/person/system.md
+    classification_prompt: prompts/person/classification.md
+    draft_prompt: prompts/person/draft.md
 """
     )
 
@@ -35,7 +36,8 @@ def test_category_action_is_imap_only():
                 "category_action": "move",
                 "email": "person@example.com",
                 "model": {"provider": "openai", "model": "test"},
-                "system_prompt": "prompts/system.md",
+                "classification_prompt": "prompts/classification.md",
+                "draft_prompt": "prompts/draft.md",
             }
         )
 
@@ -45,31 +47,12 @@ def test_nested_category_paths_are_validated(tmp_path):
     raw = (tmp_path / "accounts.yaml").read_text()
     (tmp_path / "accounts.yaml").write_text(
         raw.replace(
-            "    system_prompt:",
-            "    categories:\n      agent/follow_up: Needs my response.\n    system_prompt:",
+            "    classification_prompt:",
+            "    categories:\n      agent/follow_up: Needs my response.\n    classification_prompt:",
         )
     )
     agent = Settings(tmp_path).account("person@example.com").agent
     assert agent.categories["agent/follow_up"] == "Needs my response."
-
-
-def test_legacy_nested_agent_shape_is_loaded_during_migration(tmp_path):
-    (tmp_path / "accounts.yaml").write_text(
-        """
-accounts:
-  person@example.com:
-    provider: gmail
-    email: person@example.com
-    agent:
-      version: 1
-      model: {provider: openai, model: test-model}
-      system_prompt: prompts/person/system.md
-      safety: {allow_drafts: true, allow_send: false}
-"""
-    )
-    account = Settings(tmp_path).account("person@example.com")
-    assert account.email == "person@example.com"
-    assert account.model.model == "test-model"
 
 
 def test_unknown_account_is_rejected(tmp_path):

@@ -8,7 +8,11 @@ from time import perf_counter
 from langchain.agents import create_agent
 
 from email_agent.ai.outputs import ClassificationOutput, DraftOutput
-from email_agent.ai.prompts import format_thread, system_prompt
+from email_agent.ai.prompts import (
+    classification_system_prompt,
+    draft_system_prompt,
+    format_thread,
+)
 from email_agent.config import AgentConfig
 from email_agent.diagnostics import model_tracing_enabled
 from email_agent.privacy import redact
@@ -22,8 +26,10 @@ class EmailAgents:
 
     def __init__(self, root: Path, agent: AgentConfig, model):
         self.agent = agent
-        self.classification_prompt = redact(system_prompt(root, agent, "classify")).sanitized_text
-        self.draft_prompt = redact(system_prompt(root, agent, "reply")).sanitized_text
+        self.classification_prompt = redact(
+            classification_system_prompt(root, agent)
+        ).sanitized_text
+        self.draft_prompt = redact(draft_system_prompt(root, agent)).sanitized_text
         self.classifier = create_agent(
             model=model,
             tools=[],

@@ -18,12 +18,11 @@ class Settings:
         raw = yaml.safe_load((self.root / "accounts.yaml").read_text()) or {}
         if not isinstance(raw.get("accounts"), dict):
             raise TypeError("accounts.yaml must contain an 'accounts' mapping")
-        self.accounts = {
-            key: AccountConfig.model_validate(
-                {"email": key, **self._flatten_legacy_account(value)}
-            )
-            for key, value in raw["accounts"].items()
-        }
+        self.accounts = {}
+        for email, account in raw["accounts"].items():
+            if not isinstance(account, dict):
+                raise TypeError("Each account must be a mapping")
+            self.accounts[email] = AccountConfig.model_validate({"email": email, **account})
         configured_path = Path(os.getenv("EMAIL_AGENT_DATABASE", "data/email_agent.db"))
         self.database_path = (
             configured_path if configured_path.is_absolute() else self.root / configured_path
@@ -35,20 +34,3 @@ class Settings:
             return self.accounts[email]
         except KeyError as exc:
             raise ValueError(f"Unknown account: {email}") from exc
-
-    @staticmethod
-    def _flatten_legacy_account(value: object) -> dict:
-        """Accept the pre-flattening v0.1 shape while users migrate their YAML."""
-        if not isinstance(value, dict):
-            raise TypeError("Each account must be a mapping")
-        flattened = dict(value)
-        flattened.pop("email", None)
-        flattened.pop("smtp_host", None)
-        flattened.pop("smtp_port", None)
-        legacy_agent = flattened.pop("agent", None)
-        if isinstance(legacy_agent, dict):
-            legacy_agent = dict(legacy_agent)
-            legacy_agent.pop("version", None)
-            legacy_agent.pop("safety", None)
-            flattened.update(legacy_agent)
-        return flattened
