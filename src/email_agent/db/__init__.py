@@ -1,6 +1,13 @@
-"""SQLite persistence and ordered schema migrations."""
+"""Peewee connection and persistence models."""
 
-from email_agent.db.database import Database
-from email_agent.db.records import OrganizationCandidate, StoredDraft, StoredMessage
+from email_agent.db.connection import database, initialize_database
+from email_agent.db.models import CategorySync, Classification, Draft, Message
 
-__all__ = ["Database", "OrganizationCandidate", "StoredDraft", "StoredMessage"]
+__all__ = [
+    "CategorySync",
+    "Classification",
+    "Draft",
+    "Message",
+    "database",
+    "initialize_database",
+]

@@ -153,15 +153,13 @@ def test_nested_commands_are_discoverable():
 
 
 def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
-    from email_agent.db import StoredDraft
+    from email_agent.db import Draft
 
     class Handlers:
         def list_drafts(self, account):
             return [
-                StoredDraft(
+                Draft(
                     message_id=175,
-                    account_id="person@example.com",
-                    source_message_id="provider-175",
                     recipient="sender@example.com",
                     subject="Re: A question",
                     body="Suggested answer.",

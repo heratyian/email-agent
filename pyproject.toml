@@ -11,6 +11,7 @@ dependencies = [
   "langchain>=1.0",
   "langchain-ollama>=1.0",
   "langchain-openai>=1.0",
+  "peewee>=4.0,<5",
   "pydantic>=2.10",
   "python-dotenv>=1.0",
   "pyyaml>=6.0",

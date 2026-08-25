@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from email_agent.ai.models import EmailClassification
 from email_agent.config import Settings
-from email_agent.db import Database
+from email_agent.db import Message
 from email_agent.providers import create_mail_provider
 from email_agent.providers.models import EmailMessage
 
@@ -23,13 +23,12 @@ class MessageDetails:
 class MessageService:
     """Retrieve locally tracked messages from their mailbox provider."""
 
-    def __init__(self, settings: Settings, database: Database | None = None):
+    def __init__(self, settings: Settings):
         self.settings = settings
-        self.database = database or Database(settings.database_path)
 
     def show(self, message_id: int) -> MessageDetails:
         logger.info("Loading local message %s", message_id)
-        row = self.database.show_message(message_id)
+        row = Message.get_or_none(Message.id == message_id)
         if not row:
             raise LookupError("message not found")
         account = self.settings.account(row.account_id)
@@ -41,4 +40,4 @@ class MessageService:
             row.provider_mailbox,
         )
         message = provider.get_message(row.provider_uid, row.provider_mailbox)
-        return MessageDetails(message, row.classification)
+        return MessageDetails(message, row.classification_value())

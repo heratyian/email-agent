@@ -316,6 +316,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-ollama" },
     { name = "langchain-openai" },
+    { name = "peewee" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -337,6 +338,7 @@ requires-dist = [
     { name = "langchain", specifier = ">=1.0" },
     { name = "langchain-ollama", specifier = ">=1.0" },
     { name = "langchain-openai", specifier = ">=1.0" },
+    { name = "peewee", specifier = ">=4.0,<5" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "python-dotenv", specifier = ">=1.0" },
@@ -946,6 +948,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
+name = "peewee"
+version = "4.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/98/919cd14a0115c4e81093d723faff2ed03145966c61c5c8dac13104d4d94f/peewee-4.4.0.tar.gz", hash = "sha256:ea3b013d2366d09bb0bd7b6223f0e3e34125caad5d4dfc23525c668c8aad7026", size = 817279, upload-time = "2026-08-23T11:43:40.093Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/28/1ed7ca6ec0b45d0209346fb82d7145a5abf8fd9bdca6bcb75cb868601f43/peewee-4.4.0-py3-none-any.whl", hash = "sha256:c4d6bc13d9a9b22fe691f695f5a5d716645b4bd5387fef27b9cb53ef14fae1e1", size = 191247, upload-time = "2026-08-23T11:43:38.979Z" },
 ]
 
 [[package]]

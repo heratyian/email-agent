@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from email_agent.config import AccountConfig, Settings
-from email_agent.db import Database, StoredDraft
+from email_agent.db import Draft, Message
 from email_agent.generators import GeneratedAccount
 from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
@@ -56,42 +56,43 @@ class CommandHandlers:
         return MessageService(self.settings).show(message_id)
 
     def message_account(self, message_id: int) -> str:
-        row = Database(self.settings.database_path).show_message(message_id)
+        row = Message.get_or_none(Message.id == message_id)
         if not row:
             raise LookupError("message not found")
         return row.account_id
 
-    def list_drafts(self, account_id: str | None = None) -> list[StoredDraft]:
-        return DraftService(Database(self.settings.database_path)).list(account_id)
+    def list_drafts(self, account_id: str | None = None) -> list[Draft]:
+        return list(Draft.pending(account_id))
 
-    def show_draft(self, message_id: int) -> StoredDraft:
-        return DraftService(Database(self.settings.database_path)).get(message_id)
+    def show_draft(self, message_id: int) -> Draft:
+        draft = Draft.latest_for_message(message_id)
+        if draft is None:
+            raise LookupError("draft not found")
+        return draft
 
-    def generate_draft(self, message_id: int, instruction: str | None = None) -> StoredDraft:
-        database = Database(self.settings.database_path)
-        row = database.show_message(message_id)
+    def generate_draft(self, message_id: int, instruction: str | None = None) -> Draft:
+        row = Message.get_or_none(Message.id == message_id)
         if not row:
             raise LookupError("message not found")
         runtime = self.runtime(row.account_id)
-        return DraftService(database).generate(
+        return DraftService().generate(
             message_id, runtime.provider, runtime.require_agents(), instruction=instruction
         )
 
     def upload_draft(self, message_id: int) -> str:
-        return DraftService(Database(self.settings.database_path)).upload(message_id, self.settings)
+        return DraftService().upload(message_id, self.settings)
 
     def delete_draft(self, message_id: int) -> None:
-        DraftService(Database(self.settings.database_path)).delete(message_id)
+        if not Draft.change_generated_status(message_id, "rejected"):
+            raise LookupError("draft not found")
 
     def source_message(self, message_id: int) -> EmailMessage:
-        return DraftService(Database(self.settings.database_path)).source_message(
-            message_id, self.settings
-        )
+        return DraftService().source_message(message_id, self.settings)
 
     def inbox_items(
         self, runtime: AccountRuntime, limit: int, *, unread: bool = False
     ) -> list[InboxItem]:
-        return InboxService(runtime.provider, runtime.database).list(limit, unread_only=unread)
+        return InboxService(runtime.provider).list(limit, unread_only=unread)
 
     def run_inbox(
         self,
@@ -117,7 +118,6 @@ class CommandHandlers:
             runtime.account.agent,
             runtime.provider,
             runtime.require_agents(),
-            runtime.database,
         )
         if message_id is not None:
             if self.message_account(message_id) != account_id:

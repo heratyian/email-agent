@@ -1,7 +1,7 @@
 import typer
 from wcwidth import wcswidth, wcwidth
 
-from email_agent.db import StoredDraft
+from email_agent.db import Draft
 from email_agent.providers.models import EmailMessage
 from email_agent.services import ClassificationFailure
 from email_agent.services.messages import MessageDetails
@@ -167,20 +167,20 @@ def render_message_details(details: MessageDetails, *, show_confidence: bool = T
         typer.echo(classification.escalation_reason or "Review required.")
 
 
-def render_draft_list(drafts: list[StoredDraft]) -> None:
+def render_draft_list(drafts: list[Draft]) -> None:
     """Render pending draft summaries."""
     for draft in drafts:
         typer.echo(f"{draft.message_id}: To {draft.recipient} — {draft.subject}")
 
 
-def render_draft(draft: StoredDraft) -> None:
+def render_draft(draft: Draft) -> None:
     """Render one complete persisted draft."""
     typer.echo(
         f"To: {draft.recipient}\nSubject: {draft.subject}\n\n{draft.body}\n\nStatus: {draft.status}"
     )
 
 
-def render_review_item(draft: StoredDraft, source: EmailMessage | None, error: str | None) -> None:
+def render_review_item(draft: Draft, source: EmailMessage | None, error: str | None) -> None:
     """Render one draft beside its source message when available."""
     typer.secho(f"\nDraft #{draft.message_id}", fg=typer.colors.CYAN, bold=True)
     if error:

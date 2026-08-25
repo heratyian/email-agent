@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from email_agent.ai.models import DraftReply, EmailClassification
 from email_agent.config import Settings
-from email_agent.db import Database
+from email_agent.db import Classification, Draft, Message, database, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
@@ -45,7 +45,7 @@ def classification() -> EmailClassification:
     )
 
 
-def test_runtime_factory_builds_typed_account_dependencies_without_connecting(tmp_path):
+def test_runtime_factory_initializes_account_dependencies_and_database(tmp_path):
     runtime = RuntimeFactory(write_settings(tmp_path)).for_account(
         "person@example.com", with_agents=False
     )
@@ -53,7 +53,7 @@ def test_runtime_factory_builds_typed_account_dependencies_without_connecting(tm
     assert runtime.account_id == "person@example.com"
     assert runtime.account.email == "person@example.com"
     assert runtime.agents is None
-    assert runtime.database.path == runtime.settings.database_path
+    assert database.database == runtime.settings.database_path
 
 
 def test_account_service_validates_prompt_files(tmp_path):
@@ -63,10 +63,11 @@ def test_account_service_validates_prompt_files(tmp_path):
 
 def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
     settings = write_settings(tmp_path)
-    database = Database(settings.database_path)
+    initialize_database(settings.database_path)
     source = message()
-    local_id = database.save_triage(source, classification())
-    service = MessageService(settings, database)
+    stored = Message.upsert_email(source)
+    Classification.save_for(stored, classification())
+    service = MessageService(settings)
 
     class Provider:
         def get_message(self, provider_id, mailbox):
@@ -76,13 +77,13 @@ def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
         "email_agent.services.messages.create_mail_provider",
         lambda account_id, account, root: Provider(),
     )
-    details = service.show(local_id)
+    details = service.show(stored.id)
     assert details.message.subject == "Question"
     assert details.classification.category == "action"
 
 
 def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, monkeypatch):
-    database = Database(tmp_path / "email-agent.db")
+    initialize_database(tmp_path / "email-agent.db")
     source = message()
     reply = DraftReply(
         recipient="sender@example.com",
@@ -91,10 +92,9 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
         reasoning_summary="Answer directly.",
         confidence=0.9,
     )
-    local_id = database.save_triage(source, classification())
-    database.replace_generated_draft(
-        local_id, source.account_id, source.provider_id, reply
-    )
+    stored = Message.upsert_email(source)
+    Classification.save_for(stored, classification())
+    Draft.replace_generated(stored, reply)
     settings = write_settings(tmp_path)
 
     class Provider:
@@ -110,13 +110,13 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
         "email_agent.services.drafts.create_mail_provider",
         lambda account_id, account, root: Provider(),
     )
-    service = DraftService(database)
+    service = DraftService()
 
-    assert service.get(1).subject == "Re: Question"
+    assert Draft.latest_for_message(1).subject == "Re: Question"
     assert service.source_message(1, settings).content == source.content
     assert service.upload(1, settings) == "mailbox-draft-1"
-    assert service.get(1).status == "uploaded"
-    assert service.list() == []
+    assert Draft.latest_for_message(1).status == "uploaded"
+    assert list(Draft.pending()) == []
 
 
 def test_reply_subject_uses_original_subject_without_duplicate_prefix():
@@ -126,14 +126,13 @@ def test_reply_subject_uses_original_subject_without_duplicate_prefix():
     assert reply_subject("") == "Re: (no subject)"
 
 
-def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
-    database = Database(tmp_path / "email-agent.db")
+def test_draft_model_removes_suggestion_from_review_queue(tmp_path):
+    initialize_database(tmp_path / "email-agent.db")
     source = message()
-    local_id = database.save_triage(source, classification())
-    database.replace_generated_draft(
-        local_id,
-        source.account_id,
-        source.provider_id,
+    stored = Message.upsert_email(source)
+    Classification.save_for(stored, classification())
+    Draft.replace_generated(
+        stored,
         DraftReply(
             recipient="sender@example.com",
             subject="Re: Question",
@@ -143,17 +142,17 @@ def test_draft_service_deletes_suggestion_from_review_queue(tmp_path):
         ),
     )
 
-    service = DraftService(database)
-    service.delete(1)
+    Draft.change_generated_status(1, "rejected")
 
-    assert service.get(1).status == "rejected"
-    assert service.list() == []
+    assert Draft.latest_for_message(1).status == "rejected"
+    assert list(Draft.pending()) == []
 
 
 def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
-    database = Database(tmp_path / "email-agent.db")
+    initialize_database(tmp_path / "email-agent.db")
     source = message()
-    local_id = database.save_triage(source, classification())
+    stored = Message.upsert_email(source)
+    Classification.save_for(stored, classification())
 
     class Provider:
         def get_message(self, provider_id, mailbox):
@@ -176,12 +175,12 @@ def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
             )
 
     agents = Agents()
-    service = DraftService(database)
+    service = DraftService()
 
-    first = service.generate(local_id, Provider(), agents)
-    second = service.generate(local_id, Provider(), agents)
+    first = service.generate(stored.id, Provider(), agents)
+    second = service.generate(stored.id, Provider(), agents)
 
     assert first.body == "Generated answer 1."
     assert second.body == "Generated answer 2."
-    assert service.get(local_id).body == "Generated answer 2."
-    assert len(service.list()) == 1
+    assert Draft.latest_for_message(stored.id).body == "Generated answer 2."
+    assert len(list(Draft.pending())) == 1

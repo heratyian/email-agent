@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from email_agent.ai.agents import EmailAgents
 from email_agent.ai.models import EmailClassification
 from email_agent.config import AgentConfig
-from email_agent.db import Database
+from email_agent.db import CategorySync, Classification, Draft, Message, database
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
 from email_agent.services.category_routing import category_destination
@@ -41,12 +42,10 @@ class ClassificationService:
         agent: AgentConfig,
         provider: MailProvider,
         agents: EmailAgents,
-        database: Database,
     ):
         self.agent = agent
         self.provider = provider
         self.agents = agents
-        self.database = database
 
     def classify_recent(
         self, limit: int = 20, *, reclassify: bool = False
@@ -56,17 +55,15 @@ class ClassificationService:
             return []
         results: list[ClassifiedEmail | ClassificationFailure] = []
         for message in self.provider.get_messages(limit, unread_only=False):
-            if not reclassify and self.database.classification_completed(
-                message.account_id, message.provider_id
-            ):
+            stored = Message.find_email(message.account_id, message.provider_id)
+            if not reclassify and stored is not None and stored.classified_at is not None:
                 continue
-            saved = self.database.get_triage(message.account_id, message.provider_id)
-            results.append(self._classify(message, saved[0] if saved else None))
+            results.append(self._classify(message, stored.id if stored else None))
         return results
 
     def classify_message(self, local_id: int) -> ClassifiedEmail | ClassificationFailure:
         """Classify one locally synchronized message."""
-        stored_message = self.database.show_message(local_id)
+        stored_message = Message.get_or_none(Message.id == local_id)
         if not stored_message:
             raise LookupError("message not found")
         message = self.provider.get_message(
@@ -81,24 +78,38 @@ class ClassificationService:
             thread = self.provider.get_thread(message.provider_id, message.mailbox)
             classification = self.agents.classify(message, thread)
             destination = category_destination(self.agent, classification)
-            if local_id is None:
-                local_id = self.database.save_triage(message, classification)
-            elif not self.database.update_classification(local_id, classification):
-                raise LookupError("message classification could not be saved")
-            previous = self.database.current_category_sync(local_id)
+            with database.atomic():
+                stored = (
+                    Message.upsert_email(message)
+                    if local_id is None
+                    else Message.get_by_id(local_id)
+                )
+                Classification.save_for(stored, classification)
+                local_id = stored.id
+            previous = stored.current_category_sync()
             synchronization = self.provider.sync_category(
                 message.provider_id, destination, message.mailbox, previous
             )
-            self.database.complete_classification(
-                local_id,
-                self.provider.category_sync_key(destination) if destination is not None else None,
-                synchronization,
-            )
-            if not classification.requires_reply:
-                self.database.delete_generated_drafts(local_id)
+            with database.atomic():
+                if synchronization is not None and synchronization.source_moved:
+                    stored.provider_uid = synchronization.provider_id
+                    stored.provider_mailbox = synchronization.mailbox
+                CategorySync.replace_active(
+                    local_id,
+                    self.provider.category_sync_key(destination)
+                    if destination is not None
+                    else None,
+                    synchronization,
+                )
+                stored.classified_at = datetime.now(UTC)
+                stored.save()
+                if not classification.requires_reply:
+                    Draft.delete().where(
+                        (Draft.message == local_id) & (Draft.status == "generated")
+                    ).execute()
             logger.info("Classified local message %s as %s", local_id, classification.category)
             return ClassifiedEmail(
-                local_id, message, classification, self.database.has_draft(local_id)
+                local_id, message, classification, Draft.has_reviewable(local_id)
             )
         except Exception as exc:  # noqa: BLE001 - isolate failures within a batch
             logger.info("Classification failed for local message %s: %s", local_id or "new", exc)

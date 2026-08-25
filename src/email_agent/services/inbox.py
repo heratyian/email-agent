@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from email_agent.ai.models import EmailClassification
-from email_agent.db import Database
+from email_agent.db import Draft, Message
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
 
@@ -24,9 +24,8 @@ class InboxItem:
 class InboxService:
     """Synchronize and list an ordinary inbox without invoking a model."""
 
-    def __init__(self, provider: MailProvider, database: Database):
+    def __init__(self, provider: MailProvider):
         self.provider = provider
-        self.database = database
 
     def list(
         self,
@@ -40,18 +39,15 @@ class InboxService:
         messages = self.provider.get_messages(limit, unread_only=unread_only)
         logger.info("Synchronizing %d recent inbox messages", len(messages))
         for message in sorted(messages, key=lambda item: item.received_at, reverse=True):
-            saved = self.database.get_triage(message.account_id, message.provider_id)
-            if saved:
-                local_id, classification = saved
-            else:
-                local_id = self.database.save_message(message)
-                classification = None
+            stored = Message.find_email(message.account_id, message.provider_id)
+            if stored is None:
+                stored = Message.upsert_email(message)
             results.append(
                 InboxItem(
-                    local_id=local_id,
+                    local_id=stored.id,
                     message=message,
-                    classification=classification,
-                    draft_ready=self.database.has_draft(local_id),
+                    classification=stored.classification_value(),
+                    draft_ready=Draft.has_reviewable(stored.id),
                 )
             )
         logger.info("Returning %d inbox messages", len(results))

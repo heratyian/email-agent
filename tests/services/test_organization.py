@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from email_agent.ai.models import EmailClassification
 from email_agent.config import AgentConfig
-from email_agent.db import OrganizationCandidate
+from email_agent.db import CategorySync, Classification, Message, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.services.organization import OrganizationService, OrganizationStatus
 
@@ -29,31 +29,6 @@ def account():
     )
 
 
-class FakeDatabase:
-    def __init__(self, rows):
-        self.rows = rows
-        self.updated = []
-        self.synced = []
-
-    def list_categorized_messages(self, account_id, limit):
-        return self.rows[:limit]
-
-    def category_was_synced(self, message_id, destination):
-        return False
-
-    def current_category_sync(self, message_id):
-        return None
-
-    def update_classification(self, message_id, value):
-        self.updated.append((message_id, value.category))
-
-    def update_provider_location(self, message_id, provider_id, mailbox):
-        raise AssertionError("No move result was returned")
-
-    def mark_category_synced(self, message_id, destination, result=None):
-        self.synced.append((message_id, destination))
-
-
 class FakeProvider:
     def __init__(self):
         self.synced = []
@@ -73,34 +48,41 @@ class FakeProvider:
 
 
 def row(local_id: int, category: str | None):
-    return OrganizationCandidate(
+    message = Message.create(
         id=local_id,
+        account_id="person@example.com",
+        provider_message_id=str(local_id),
         provider_uid=str(local_id),
         provider_mailbox="INBOX",
+        from_address="sender@example.com",
         subject=f"Message {local_id}",
-        classification=classification(category),
+        received_at="2026-01-01T00:00:00+00:00",
     )
+    Classification.save_for(message, classification(category))
+    return message
 
 
-def test_organization_service_reports_mixed_message_outcomes():
-    database = FakeDatabase([row(1, "action"), row(2, None), row(3, "obsolete")])
+def test_organization_service_reports_mixed_message_outcomes(tmp_path):
+    initialize_database(tmp_path / "test.db")
+    row(1, "action")
+    row(2, None)
+    row(3, "obsolete")
     provider = FakeProvider()
 
-    report = OrganizationService(
-        "person@example.com", account(), provider, database
-    ).run()
+    report = OrganizationService("person@example.com", account(), provider).run()
 
     assert report.changed == 1
     assert report.uncategorized == 1
     assert report.failed == 1
     assert provider.synced == [("1", "action")]
-    assert database.synced == [(1, "action")]
+    assert CategorySync.is_active(1, "action")
     assert report.items[2].status is OrganizationStatus.FAILED
     assert "unknown category" in report.items[2].error
 
 
-def test_dry_run_reclassification_has_no_side_effects():
-    database = FakeDatabase([row(1, "obsolete")])
+def test_dry_run_reclassification_has_no_side_effects(tmp_path):
+    initialize_database(tmp_path / "test.db")
+    stored = row(1, "obsolete")
     provider = FakeProvider()
 
     class Agents:
@@ -114,12 +96,12 @@ def test_dry_run_reclassification_has_no_side_effects():
             )
 
     report = OrganizationService(
-        "person@example.com", account(), provider, database, Agents()
+        "person@example.com", account(), provider, Agents()
     ).run(dry_run=True, reclassify_all=True)
 
     assert report.changed == 1
     assert report.items[0].status is OrganizationStatus.PREVIEW
     assert report.items[0].reclassified_as == "action"
-    assert database.updated == []
-    assert database.synced == []
+    assert stored.classification_value().category == "obsolete"
+    assert not CategorySync.select().exists()
     assert provider.synced == []

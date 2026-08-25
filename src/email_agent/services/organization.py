@@ -6,7 +6,7 @@ from enum import StrEnum
 
 from email_agent.ai.agents import EmailAgents
 from email_agent.config import AccountConfig
-from email_agent.db import Database, OrganizationCandidate
+from email_agent.db import CategorySync, Classification, Draft, Message
 from email_agent.providers import MailProvider
 from email_agent.services.category_routing import category_destination
 
@@ -70,13 +70,11 @@ class OrganizationService:
         account_id: str,
         account: AccountConfig,
         provider: MailProvider,
-        database: Database,
         agents: EmailAgents | None = None,
     ):
         self.account_id = account_id
         self.account = account
         self.provider = provider
-        self.database = database
         self.agents = agents
 
     def run(
@@ -98,7 +96,7 @@ class OrganizationService:
             raise ValueError("Reclassification requires configured model agents")
 
         report = OrganizationReport(dry_run=dry_run)
-        rows = self.database.list_categorized_messages(self.account_id, limit)
+        rows = Message.organization_candidates(self.account_id, limit)
         logger.info("Examining %d local messages for organization", len(rows))
         for row in rows:
             report.items.append(
@@ -121,7 +119,7 @@ class OrganizationService:
 
     def _organize_one(
         self,
-        row: OrganizationCandidate,
+        row: Message,
         *,
         dry_run: bool,
         force: bool,
@@ -129,7 +127,7 @@ class OrganizationService:
         reclassify_all: bool,
     ) -> OrganizationItem:
         local_id, subject = row.id, row.subject
-        classification = row.classification
+        classification = row.classification_value()
         missing_category = False
         try:
             destination = category_destination(self.account.agent, classification)
@@ -154,9 +152,11 @@ class OrganizationService:
                 destination = category_destination(self.account.agent, classification)
                 reclassified_as = classification.category or "uncategorized"
                 if not dry_run:
-                    self.database.update_classification(local_id, classification)
+                    Classification.save_for(row, classification)
                     if not classification.requires_reply:
-                        self.database.delete_generated_drafts(local_id)
+                        Draft.delete().where(
+                            (Draft.message == local_id) & (Draft.status == "generated")
+                        ).execute()
             except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
                 return OrganizationItem(
                     local_id,
@@ -166,7 +166,7 @@ class OrganizationService:
                 )
 
         if destination is None:
-            previous = self.database.current_category_sync(local_id)
+            previous = row.current_category_sync()
             if not (reclassify_unknown or reclassify_all) or previous is None:
                 return OrganizationItem(
                     local_id,
@@ -185,7 +185,7 @@ class OrganizationService:
                 self.provider.sync_category(
                     row.provider_uid, None, row.provider_mailbox, previous
                 )
-                self.database.mark_category_synced(local_id, None)
+                CategorySync.replace_active(local_id, None)
             except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
                 return OrganizationItem(
                     local_id,
@@ -202,7 +202,7 @@ class OrganizationService:
             )
 
         sync_key = self.provider.category_sync_key(destination)
-        if not force and self.database.category_was_synced(local_id, sync_key):
+        if not force and CategorySync.is_active(local_id, sync_key):
             return OrganizationItem(
                 local_id,
                 subject,
@@ -219,13 +219,15 @@ class OrganizationService:
                 reclassified_as=reclassified_as,
             )
         try:
-            previous = self.database.current_category_sync(local_id)
+            previous = row.current_category_sync()
             sync = self.provider.sync_category(
                 row.provider_uid, destination, row.provider_mailbox, previous
             )
             if sync is not None and sync.source_moved:
-                self.database.update_provider_location(local_id, sync.provider_id, sync.mailbox)
-            self.database.mark_category_synced(local_id, sync_key, sync)
+                row.provider_uid = sync.provider_id
+                row.provider_mailbox = sync.mailbox
+                row.save()
+            CategorySync.replace_active(local_id, sync_key, sync)
         except Exception as exc:  # noqa: BLE001 - isolate failures within the batch
             return OrganizationItem(
                 local_id,

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from email_agent.ai.agents import EmailAgents
 from email_agent.ai.llm import get_model
 from email_agent.config import AccountConfig, Settings
-from email_agent.db import Database
+from email_agent.db import initialize_database
 from email_agent.providers import MailProvider, create_mail_provider
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,6 @@ class AccountRuntime:
     account_id: str
     account: AccountConfig
     provider: MailProvider
-    database: Database
     agents: EmailAgents | None
 
     def require_agents(self) -> EmailAgents:
@@ -35,6 +34,7 @@ class RuntimeFactory:
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
+        initialize_database(self.settings.database_path)
 
     def for_account(self, account_id: str, *, with_agents: bool = True) -> AccountRuntime:
         logger.info("Loading account runtime for %s", account_id)
@@ -49,7 +49,6 @@ class RuntimeFactory:
             account_id=account_id,
             account=account,
             provider=create_mail_provider(account_id, account, self.settings.root),
-            database=Database(self.settings.database_path),
             agents=agents,
         )
         logger.debug(
