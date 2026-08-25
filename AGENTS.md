@@ -15,19 +15,19 @@ Follow the [Ruby on Rails Doctrine](https://rubyonrails.org/doctrine), adapted t
 ## Code
 
 - Prefer simple, explicit, unsurprising Python over cleverness, indirection, or premature abstraction.
+- Code should be self-documenting. Use docstrings liberally. Use Simplified Technical English for documentation.
 - Use descriptive domain names; avoid acronyms, abbreviations, and shorthand.
 - Keep the happy path obvious. Prefer guard clauses and local error handling.
 - Use functions, classes, dataclasses, Pydantic models, comprehensions, and loops where each is clearest.
-- Prefer composition and direct calls over inheritance, metaprogramming, registries, dependency injection frameworks, or speculative extension points.
 - Abstract only stable concepts with multiple real uses. Readable duplication is acceptable.
-- Comments explain why, not what. Use Simplified Technical English for documentation.
 - Match existing conventions and let Ruff handle formatting.
 
 ## Architecture
 
-- Follow existing structure and reuse existing abstractions. Suggest refactors when it meaningfully improves human readability and/or performance. Follow architectural best practices.
+- Follow architectural best practices.
+- Follow existing structure and reuse existing abstractions. Suggest refactors when it  improves human readability and/or performance.
 - Keep this a single understandable Python application.
-- Reuse dependencies; add dependencies when it meaningfully reduces complexity.
+- It's preferable to use a library than roll our own solution to a solved problem. Reuse dependencies when possible. Add dependencies when it meaningfully reduces complexity.
 - Do not add code for hypothetical needs.
 
 ## Changes
