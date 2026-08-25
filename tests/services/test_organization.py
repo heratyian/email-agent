@@ -1,14 +1,14 @@
 from types import SimpleNamespace
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import AgentConfig
 from email_agent.db import CategorySync, Classification, Message, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.services.organization import OrganizationService, OrganizationStatus
 
 
-def classification(category: str | None) -> EmailClassification:
-    return EmailClassification(
+def classification(category: str | None) -> ClassificationOutput:
+    return ClassificationOutput(
         category=category,
         requires_reply=False,
         priority="normal",
@@ -87,7 +87,7 @@ def test_dry_run_reclassification_has_no_side_effects(tmp_path):
 
     class Agents:
         def classify(self, message, thread):
-            return EmailClassification(
+            return ClassificationOutput(
                 category="action",
                 requires_reply=True,
                 priority="normal",

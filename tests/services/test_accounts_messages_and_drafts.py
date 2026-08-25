@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from email_agent.ai.models import DraftReply, EmailClassification
+from email_agent.ai.outputs import ClassificationOutput, DraftOutput
 from email_agent.config import Settings
 from email_agent.db import Classification, Draft, Message, database, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
@@ -35,8 +35,8 @@ def message() -> EmailMessage:
     )
 
 
-def classification() -> EmailClassification:
-    return EmailClassification(
+def classification() -> ClassificationOutput:
+    return ClassificationOutput(
         category="action",
         requires_reply=True,
         priority="normal",
@@ -85,7 +85,7 @@ def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
 def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, monkeypatch):
     initialize_database(tmp_path / "email-agent.db")
     source = message()
-    reply = DraftReply(
+    reply = DraftOutput(
         recipient="sender@example.com",
         subject="Re: Question",
         body="Here is the answer.",
@@ -133,7 +133,7 @@ def test_draft_model_removes_suggestion_from_review_queue(tmp_path):
     Classification.save_for(stored, classification())
     Draft.replace_generated(
         stored,
-        DraftReply(
+        DraftOutput(
             recipient="sender@example.com",
             subject="Re: Question",
             body="No thanks.",
@@ -166,7 +166,7 @@ def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
 
         def draft(self, message, thread, stored_classification):
             self.calls += 1
-            return DraftReply(
+            return DraftOutput(
                 recipient=message.from_address,
                 subject="Re: Question",
                 body=f"Generated answer {self.calls}.",

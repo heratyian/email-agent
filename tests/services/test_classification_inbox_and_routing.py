@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import AgentConfig
 from email_agent.db import CategorySync, Classification, Draft, Message, initialize_database
 from email_agent.providers.base import CategorySyncResult
@@ -42,7 +42,7 @@ class FakeAgents:
 
     def classify(self, message, thread):
         self.classification_calls += 1
-        return EmailClassification(
+        return ClassificationOutput(
             category="action",
             requires_reply=True,
             priority="normal",
@@ -201,7 +201,7 @@ def test_category_sync_audit_is_idempotent(tmp_path):
 
 
 def test_unconfigured_category_is_rejected_instead_of_implicitly_mapped():
-    classification = EmailClassification(
+    classification = ClassificationOutput(
         category="needs_reply",
         requires_reply=True,
         priority="normal",
@@ -218,7 +218,7 @@ def test_existing_category_maps_to_unique_nested_destination():
         "agent/action": "Requires my response.",
         "agent/travel": "Reservations and itinerary changes.",
     }
-    classification = EmailClassification(
+    classification = ClassificationOutput(
         category="action",
         requires_reply=True,
         priority="normal",
@@ -229,7 +229,7 @@ def test_existing_category_maps_to_unique_nested_destination():
 
 
 def test_uncategorized_message_has_no_provider_destination():
-    classification = EmailClassification(
+    classification = ClassificationOutput(
         category=None,
         requires_reply=False,
         priority="normal",

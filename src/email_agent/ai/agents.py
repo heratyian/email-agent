@@ -7,7 +7,7 @@ from time import perf_counter
 
 from langchain.agents import create_agent
 
-from email_agent.ai.models import DraftReply, EmailClassification
+from email_agent.ai.outputs import ClassificationOutput, DraftOutput
 from email_agent.ai.prompts import format_thread, system_prompt
 from email_agent.config import AgentConfig
 from email_agent.diagnostics import model_tracing_enabled
@@ -27,7 +27,7 @@ class EmailAgents:
             model=model,
             tools=[],
             system_prompt=self.classification_prompt,
-            response_format=EmailClassification,
+            response_format=ClassificationOutput,
         )
 
         # TODO
@@ -37,10 +37,10 @@ class EmailAgents:
             model=model,
             tools=[],
             system_prompt=self.draft_prompt,
-            response_format=DraftReply,
+            response_format=DraftOutput,
         )
 
-    def classify(self, message: EmailMessage, thread: EmailThread) -> EmailClassification:
+    def classify(self, message: EmailMessage, thread: EmailThread) -> ClassificationOutput:
         content = format_thread(thread, message)
         logger.info(
             "Starting classification with %s:%s",
@@ -55,7 +55,7 @@ class EmailAgents:
         self._trace_payload("classification", self.classification_prompt, content)
         started = perf_counter()
         response = self.classifier.invoke({"messages": [{"role": "user", "content": content}]})
-        classification = EmailClassification.model_validate(response["structured_response"])
+        classification = ClassificationOutput.model_validate(response["structured_response"])
         logger.info("Classification completed in %.2fs", perf_counter() - started)
         logger.debug("Classification result: %s", classification.model_dump_json())
         self._trace_response("classification", classification.model_dump())
@@ -73,9 +73,9 @@ class EmailAgents:
         self,
         message: EmailMessage,
         thread: EmailThread,
-        classification: EmailClassification,
+        classification: ClassificationOutput,
         instruction: str | None = None,
-    ) -> DraftReply:
+    ) -> DraftOutput:
         content = (
             f"Classification:\n{classification.model_dump_json(indent=2)}\n\n"
             f"Conversation:\n{format_thread(thread, message)}"
@@ -93,7 +93,7 @@ class EmailAgents:
         self._trace_payload("draft", self.draft_prompt, content)
         started = perf_counter()
         response = self.drafter.invoke({"messages": [{"role": "user", "content": content}]})
-        draft = DraftReply.model_validate(response["structured_response"])
+        draft = DraftOutput.model_validate(response["structured_response"])
         logger.info("Draft generation completed in %.2fs", perf_counter() - started)
         logger.debug(
             "Draft result: confidence=%.2f escalation=%s characters=%d",

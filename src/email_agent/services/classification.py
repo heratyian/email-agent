@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from email_agent.ai.agents import EmailAgents
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import AgentConfig
 from email_agent.db import CategorySync, Classification, Draft, Message, database
 from email_agent.providers import MailProvider
@@ -21,7 +21,7 @@ class ClassifiedEmail:
 
     local_id: int
     message: EmailMessage
-    classification: EmailClassification
+    classification: ClassificationOutput
     draft_ready: bool
 
 

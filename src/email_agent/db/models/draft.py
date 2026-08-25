@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from peewee import BooleanField, DateTimeField, FloatField, ForeignKeyField, TextField
 
-from email_agent.ai.models import DraftReply
+from email_agent.ai.outputs import DraftOutput
 from email_agent.db.connection import database
 from email_agent.db.models.base import BaseModel, utc_now
 from email_agent.db.models.message import Message
@@ -37,7 +37,7 @@ class Draft(BaseModel):
         return query.order_by(cls.created_at.desc())
 
     @classmethod
-    def replace_generated(cls, message: Message, reply: DraftReply) -> Draft:
+    def replace_generated(cls, message: Message, reply: DraftOutput) -> Draft:
         """Replace an untouched generated draft with a new model suggestion."""
         with database.atomic():
             cls.delete().where(

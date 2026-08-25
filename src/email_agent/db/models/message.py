@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from peewee import AutoField, DateTimeField, TextField
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.db.models.base import BaseModel
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.models import EmailMessage
@@ -76,7 +76,7 @@ class Message(BaseModel):
             .limit(limit)
         )
 
-    def classification_value(self) -> EmailClassification | None:
+    def classification_value(self) -> ClassificationOutput | None:
         """Return this message's classification as the AI-facing value object."""
         from email_agent.db.models.classification import Classification
 

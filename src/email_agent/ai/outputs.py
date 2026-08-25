@@ -3,8 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class EmailClassification(BaseModel):
-    """Validated triage decision produced by the classification agent."""
+class ClassificationOutput(BaseModel):
+    """Validated triage output produced by the classification agent."""
 
     category: str | None = Field(
         default=None, min_length=1, pattern=r"^[a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)*$"
@@ -18,8 +18,8 @@ class EmailClassification(BaseModel):
     escalation_reason: str | None = None
 
 
-class DraftReply(BaseModel):
-    """Validated reply suggestion produced by the drafting agent."""
+class DraftOutput(BaseModel):
+    """Validated reply output produced by the drafting agent."""
 
     recipient: str
     subject: str

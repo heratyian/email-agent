@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import Settings
 from email_agent.db import Message
 from email_agent.providers import create_mail_provider
@@ -17,7 +17,7 @@ class MessageDetails:
     """A provider message combined with its local workflow metadata."""
 
     message: EmailMessage
-    classification: EmailClassification | None
+    classification: ClassificationOutput | None
 
 
 class MessageService:

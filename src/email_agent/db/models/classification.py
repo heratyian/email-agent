@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from peewee import AutoField, BooleanField, FloatField, ForeignKeyField, TextField
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.db.models.base import BaseModel
 from email_agent.db.models.message import Message
 
@@ -25,7 +25,7 @@ class Classification(BaseModel):
         table_name = "classifications"
 
     @classmethod
-    def save_for(cls, message: Message | int, value: EmailClassification) -> Classification:
+    def save_for(cls, message: Message | int, value: ClassificationOutput) -> Classification:
         """Insert or replace the classification associated with a message."""
         fields = value.model_dump()
         classification, created = cls.get_or_create(message=message, defaults=fields)
@@ -35,9 +35,9 @@ class Classification(BaseModel):
         Message.update(classified_at=None).where(Message.id == classification.message_id).execute()
         return classification
 
-    def to_ai(self) -> EmailClassification:
+    def to_ai(self) -> ClassificationOutput:
         """Convert persisted columns into the AI-facing classification model."""
-        return EmailClassification(
+        return ClassificationOutput(
             category=self.category,
             requires_reply=self.requires_reply,
             priority=self.priority,

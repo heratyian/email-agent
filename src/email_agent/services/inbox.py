@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 from email_agent.db import Draft, Message
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
@@ -17,7 +17,7 @@ class InboxItem:
 
     local_id: int
     message: EmailMessage
-    classification: EmailClassification | None
+    classification: ClassificationOutput | None
     draft_ready: bool
 
 

@@ -1,7 +1,7 @@
-from email_agent.ai.models import EmailClassification
+from email_agent.ai.outputs import ClassificationOutput
 
 
-def category_destination(account, classification: EmailClassification) -> str | None:
+def category_destination(account, classification: ClassificationOutput) -> str | None:
     """Return the provider-neutral label or folder for a configured category."""
     key = classification.category
     if key is None:
