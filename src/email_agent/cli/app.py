@@ -65,9 +65,11 @@ account_app = typer.Typer(
 )
 drafts_app = typer.Typer(help="Review and upload suggested replies.", invoke_without_command=True)
 message_app = typer.Typer(help="View or update an individual message.")
+evaluate_app = typer.Typer(help="Run model evaluations with synthetic examples.")
 app.add_typer(account_app, name="account")
 app.add_typer(drafts_app, name="drafts")
 app.add_typer(message_app, name="message")
+app.add_typer(evaluate_app, name="evaluate")
 
 
 @app.callback()
@@ -254,6 +256,23 @@ def classify(
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     render_classification_results(results)
+
+
+@evaluate_app.command("classification")
+def evaluate_classification(
+    profile: Annotated[str, typer.Option(help="Checked-in evaluation profile.")] = "personal",
+    dataset: Annotated[
+        str | None, typer.Option(help="Override the LangSmith dataset name.")
+    ] = None,
+):
+    """Evaluate a self-contained classifier profile against synthetic email."""
+    from email_agent.evaluations import run_classification_evaluation
+
+    try:
+        run_classification_evaluation(profile, dataset_name=dataset)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho("✓ Classification evaluation completed.", fg=typer.colors.GREEN, bold=True)
 
 
 @drafts_app.callback()

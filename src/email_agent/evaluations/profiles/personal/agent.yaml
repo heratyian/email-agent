@@ -1,0 +1,12 @@
+model:
+  provider: openai
+  model: gpt-5.4-nano
+  temperature: 0
+classification_prompt: classification.md
+categories:
+  action: Requires a reply, decision, or other action.
+  important: Important information that deserves attention.
+  receipts: Purchases, invoices, and payment confirmations.
+  newsletters: Subscriptions and recurring publications.
+  reference: Useful information requiring no action.
+  noise: Spam or low-value automated mail.

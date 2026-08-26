@@ -49,8 +49,18 @@ class CommandHandlers:
     def validate_account(self, account_id: str) -> AccountConfig:
         return self.settings.account(account_id)
 
-    def runtime(self, account_id: str, *, with_agents: bool = True) -> AccountRuntime:
-        return self.runtime_factory.for_account(account_id, with_agents=with_agents)
+    def runtime(
+        self,
+        account_id: str,
+        *,
+        with_classifier: bool = True,
+        with_drafter: bool = True,
+    ) -> AccountRuntime:
+        return self.runtime_factory.for_account(
+            account_id,
+            with_classifier=with_classifier,
+            with_drafter=with_drafter,
+        )
 
     def show_message(self, message_id: int) -> MessageDetails:
         return MessageService(self.settings).show(message_id)
@@ -74,9 +84,9 @@ class CommandHandlers:
         row = Message.get_or_none(Message.id == message_id)
         if not row:
             raise LookupError("message not found")
-        runtime = self.runtime(row.account_id)
+        runtime = self.runtime(row.account_id, with_classifier=False)
         return DraftService().generate(
-            message_id, runtime.provider, runtime.require_agents(), instruction=instruction
+            message_id, runtime.provider, runtime.require_drafter(), instruction=instruction
         )
 
     def upload_draft(self, message_id: int) -> str:
@@ -101,7 +111,9 @@ class CommandHandlers:
         *,
         unread: bool = False,
     ) -> InboxResult:
-        runtime = self.runtime(account_id, with_agents=False)
+        runtime = self.runtime(
+            account_id, with_classifier=False, with_drafter=False
+        )
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
 
@@ -111,11 +123,11 @@ class CommandHandlers:
         *,
         message_id: int | None = None,
     ) -> list[ClassifiedEmail | ClassificationFailure]:
-        runtime = self.runtime(account_id)
+        runtime = self.runtime(account_id, with_drafter=False)
         service = ClassificationService(
             runtime.account.agent,
             runtime.provider,
-            runtime.require_agents(),
+            runtime.require_classifier(),
         )
         if message_id is not None:
             if self.message_account(message_id) != account_id:

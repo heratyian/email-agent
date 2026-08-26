@@ -32,7 +32,7 @@ class AgentConfig(BaseModel):
 
     model: ModelConfig
     classification_prompt: str
-    draft_prompt: str
+    draft_prompt: str | None = None
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
     @field_validator("categories")

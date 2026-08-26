@@ -17,7 +17,7 @@ def test_top_level_help_presents_the_user_workflows():
     assert result.exit_code == 0
     assert all(
         command in result.output
-        for command in ("inbox", "classify", "drafts", "message", "account")
+        for command in ("inbox", "classify", "drafts", "message", "account", "evaluate")
     )
     assert all(
         command not in result.output
@@ -76,6 +76,8 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["account"],
         ["account", "add"],
         ["account", "validate"],
+        ["evaluate"],
+        ["evaluate", "classification"],
     ],
 )
 @pytest.mark.parametrize("flag", ["-v", "-vv", "--trace-model"])

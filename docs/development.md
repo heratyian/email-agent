@@ -63,3 +63,31 @@ Keep the README short and link to focused documents for reference detail.
 Treat CLI `--help` and shell `/help` as the current command reference.
 Documentation should use representative examples instead of copying every option
 and help string.
+
+## Classification evaluation
+
+Set `LANGSMITH_API_KEY` and run the checked-in synthetic classification dataset
+against the self-contained `personal` evaluation profile:
+
+```bash
+uv run email-agent evaluate classification --profile personal
+```
+
+The command does not load `accounts.yaml`, connect to a mailbox, or initialize the
+email database. The profile owns its model configuration, prompts, categories,
+and synthetic examples under
+`src/email_agent/evaluations/profiles/personal/`.
+
+The first run creates the `email-agent-classification-personal` dataset in
+LangSmith. Later runs reuse that dataset and create a new experiment. The
+evaluation reports exact-match scores for category, reply requirement, priority,
+and escalation requirement. Use a new dataset name after changing examples:
+
+```bash
+uv run email-agent evaluate classification \
+  --profile personal \
+  --dataset email-agent-classification-personal-v2
+```
+
+Copy the complete profile directory to create another evaluation profile. Keep
+personally identifiable mailbox content out of checked-in evaluation data.

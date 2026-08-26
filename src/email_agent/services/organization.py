@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from email_agent.ai.agents import EmailAgents
+from email_agent.ai.classifier import EmailClassifier
 from email_agent.config import AccountConfig
 from email_agent.db import CategorySync, Classification, Draft, Message
 from email_agent.providers import MailProvider
@@ -70,12 +70,12 @@ class OrganizationService:
         account_id: str,
         account: AccountConfig,
         provider: MailProvider,
-        agents: EmailAgents | None = None,
+        classifier: EmailClassifier | None = None,
     ):
         self.account_id = account_id
         self.account = account
         self.provider = provider
-        self.agents = agents
+        self.classifier = classifier
 
     def run(
         self,
@@ -92,8 +92,8 @@ class OrganizationService:
         if reclassify_unknown and reclassify_all:
             raise ValueError("Use only one reclassification option")
         should_reclassify = reclassify_unknown or reclassify_all
-        if should_reclassify and self.agents is None:
-            raise ValueError("Reclassification requires configured model agents")
+        if should_reclassify and self.classifier is None:
+            raise ValueError("Reclassification requires a configured classifier")
 
         report = OrganizationReport(dry_run=dry_run)
         rows = Message.organization_candidates(self.account_id, limit)
@@ -148,7 +148,7 @@ class OrganizationService:
                 thread = self.provider.get_thread(
                     row.provider_uid, row.provider_mailbox
                 )
-                classification = self.agents.classify(message, thread)
+                classification = self.classifier.classify(message, thread)
                 destination = category_destination(self.account.agent, classification)
                 reclassified_as = classification.category or "uncategorized"
                 if not dry_run:

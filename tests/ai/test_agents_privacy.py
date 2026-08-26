@@ -2,8 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-import email_agent.ai.agents as agents_module
-from email_agent.ai.agents import EmailAgents
+import email_agent.ai.classifier as classifier_module
+import email_agent.ai.drafter as drafter_module
+from email_agent.ai.classifier import EmailClassifier
+from email_agent.ai.drafter import EmailDrafter
 from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import AgentConfig
 from email_agent.privacy import SensitiveDataError
@@ -25,27 +27,26 @@ def build_agents(tmp_path, monkeypatch):
     classification_prompt.write_text("Escalate sensitive messages.")
     draft_prompt = tmp_path / "draft.md"
     draft_prompt.write_text("Write concise replies.")
-    created = [
-        RecordingAgent(
-            {
-                "category": "action",
-                "requires_reply": True,
-                "priority": "normal",
-                "summary": "A reply is requested.",
-                "confidence": 0.9,
-            }
-        ),
-        RecordingAgent(
-            {
-                "recipient": "attacker@example.net",
-                "subject": "Re: Hello [NAME_1]",
-                "body": "Hello [NAME_1], reply to [EMAIL_1].",
-                "reasoning_summary": "Answers [NAME_1].",
-                "confidence": 0.8,
-            }
-        ),
-    ]
-    monkeypatch.setattr(agents_module, "create_agent", lambda **kwargs: created.pop(0))
+    classifier_agent = RecordingAgent(
+        {
+            "category": "action",
+            "requires_reply": True,
+            "priority": "normal",
+            "summary": "A reply is requested.",
+            "confidence": 0.9,
+        }
+    )
+    drafter_agent = RecordingAgent(
+        {
+            "recipient": "attacker@example.net",
+            "subject": "Re: Hello [NAME_1]",
+            "body": "Hello [NAME_1], reply to [EMAIL_1].",
+            "reasoning_summary": "Answers [NAME_1].",
+            "confidence": 0.8,
+        }
+    )
+    monkeypatch.setattr(classifier_module, "create_agent", lambda **kwargs: classifier_agent)
+    monkeypatch.setattr(drafter_module, "create_agent", lambda **kwargs: drafter_agent)
     config = AgentConfig.model_validate(
         {
             "model": {"provider": "openai", "model": "test"},
@@ -54,8 +55,9 @@ def build_agents(tmp_path, monkeypatch):
             "categories": {"action": "Requires a response."},
         }
     )
-    email_agents = EmailAgents(tmp_path, config, object())
-    return email_agents
+    return EmailClassifier(tmp_path, config, object()), EmailDrafter(
+        tmp_path, config, object()
+    )
 
 
 def source_message(body="Contact Jordan Smith at jordan@example.com or (312) 555-0192."):
@@ -74,7 +76,7 @@ def source_message(body="Contact Jordan Smith at jordan@example.com or (312) 555
 def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
     tmp_path, monkeypatch
 ):
-    email_agents = build_agents(tmp_path, monkeypatch)
+    _, drafter = build_agents(tmp_path, monkeypatch)
     source = source_message()
     classification = ClassificationOutput(
         category="action",
@@ -84,14 +86,14 @@ def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
         confidence=0.9,
     )
 
-    draft = email_agents.draft(
+    draft = drafter.draft(
         source,
         EmailThread(messages=[source]),
         classification,
         instruction="Mention jordan@example.com.",
     )
 
-    payload = email_agents.drafter.inputs[0]["messages"][0]["content"]
+    payload = drafter.model_agent.inputs[0]["messages"][0]["content"]
     assert "Jordan Smith" not in payload
     assert "jordan@example.com" not in payload
     assert "(312) 555-0192" not in payload
@@ -103,10 +105,10 @@ def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
 
 
 def test_credential_detection_stops_the_model_call(tmp_path, monkeypatch):
-    email_agents = build_agents(tmp_path, monkeypatch)
+    classifier, _ = build_agents(tmp_path, monkeypatch)
     source = source_message("password: swordfish")
 
     with pytest.raises(SensitiveDataError, match="not sent"):
-        email_agents.classify(source, EmailThread(messages=[source]))
+        classifier.classify(source, EmailThread(messages=[source]))
 
-    assert email_agents.classifier.inputs == []
+    assert classifier.model_agent.inputs == []

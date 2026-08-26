@@ -49,12 +49,13 @@ def classification() -> ClassificationOutput:
 
 def test_runtime_factory_initializes_account_dependencies_and_database(tmp_path):
     runtime = RuntimeFactory(write_settings(tmp_path)).for_account(
-        "person@example.com", with_agents=False
+        "person@example.com", with_classifier=False, with_drafter=False
     )
 
     assert runtime.account_id == "person@example.com"
     assert runtime.account.email == "person@example.com"
-    assert runtime.agents is None
+    assert runtime.classifier is None
+    assert runtime.drafter is None
     assert database.database == runtime.settings.database_path
 
 

@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from email_agent.ai.agents import EmailAgents
+from email_agent.ai.classifier import EmailClassifier
 from email_agent.ai.outputs import ClassificationOutput
 from email_agent.config import AgentConfig
 from email_agent.db import CategorySync, Classification, Draft, Message, database
@@ -41,11 +41,11 @@ class ClassificationService:
         self,
         agent: AgentConfig,
         provider: MailProvider,
-        agents: EmailAgents,
+        classifier: EmailClassifier,
     ):
         self.agent = agent
         self.provider = provider
-        self.agents = agents
+        self.classifier = classifier
 
     def classify_unclassified(
         self, account_id: str
@@ -71,7 +71,7 @@ class ClassificationService:
     ) -> ClassifiedEmail | ClassificationFailure:
         try:
             thread = self.provider.get_thread(message.provider_id, message.mailbox)
-            classification = self.agents.classify(message, thread)
+            classification = self.classifier.classify(message, thread)
             destination = category_destination(self.agent, classification)
             with database.atomic():
                 stored = (

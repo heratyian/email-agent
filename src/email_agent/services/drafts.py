@@ -1,6 +1,6 @@
 import logging
 
-from email_agent.ai.agents import EmailAgents
+from email_agent.ai.drafter import EmailDrafter
 from email_agent.config import Settings
 from email_agent.db import Draft, Message
 from email_agent.providers import create_mail_provider
@@ -35,7 +35,7 @@ class DraftService:
         self,
         message_id: int,
         provider: MailProvider,
-        agents: EmailAgents,
+        drafter: EmailDrafter,
         instruction: str | None = None,
     ) -> Draft:
         """Generate or replace a local reply suggestion for one tracked message."""
@@ -52,9 +52,9 @@ class DraftService:
             message_row.provider_uid, message_row.provider_mailbox
         )
         if instruction:
-            reply = agents.draft(source, thread, classification, instruction=instruction)
+            reply = drafter.draft(source, thread, classification, instruction=instruction)
         else:
-            reply = agents.draft(source, thread, classification)
+            reply = drafter.draft(source, thread, classification)
         draft = Draft.replace_generated(message_row, reply)
         logger.info("Generated draft suggestion for local message %s", message_id)
         return draft

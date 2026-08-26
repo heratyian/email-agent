@@ -66,5 +66,7 @@ def classification_system_prompt(root: Path, agent: AgentConfig) -> str:
 
 def draft_system_prompt(root: Path, agent: AgentConfig) -> str:
     """Build the drafting prompt from application and user instructions."""
+    if agent.draft_prompt is None:
+        raise ValueError("draft_prompt is required to create an email drafter")
     custom_instructions = load_prompt(root, agent.draft_prompt)
     return f"{SAFETY_INSTRUCTIONS}\n\n{DRAFT_INSTRUCTIONS}\n\n{custom_instructions}"
