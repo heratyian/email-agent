@@ -157,7 +157,7 @@ def run_classification_evaluation(
         classification_target(classifier),
         data=dataset_name,
         evaluators=EVALUATORS,
-        experiment_prefix="classification",
+        experiment_prefix=f"classification-{profile.name}",
         metadata={
             "evaluation_profile": profile.name,
             "model_provider": profile.agent.model.provider,
