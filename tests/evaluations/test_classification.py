@@ -130,8 +130,21 @@ def test_dataset_is_seeded_only_when_it_does_not_exist():
     assert existing.created == []
 
 
+def test_new_dataset_is_assigned_to_application():
+    client = FakeClient(exists=False)
+
+    ensure_dataset(
+        client,
+        "classification",
+        [],
+        application_tag_value_id="application-tag-value-id",
+    )
+
+    assert client.created[0]["tag_value_ids"] == ["application-tag-value-id"]
+
+
 def test_evaluation_uses_profile_without_account_settings(monkeypatch):
-    client = FakeClient(exists=True)
+    client = FakeClient(exists=False)
     classifier = FakeAgents()
     monkeypatch.setattr(
         "email_agent.evaluations.classification.get_model", lambda model: "model"
@@ -140,10 +153,12 @@ def test_evaluation_uses_profile_without_account_settings(monkeypatch):
         "email_agent.evaluations.classification.EmailClassifier",
         lambda root, agent, model: classifier,
     )
+    monkeypatch.setenv("LANGSMITH_APPLICATION_TAG_VALUE_ID", "application-tag-value-id")
 
     result = run_classification_evaluation("personal", client=client)
 
     assert result == "results"
     _, values = client.evaluations[0]
-    assert values["data"] == "email-agent-classification-personal"
+    assert values["data"] == "classification-personal"
     assert values["metadata"]["evaluation_profile"] == "personal"
+    assert client.created[0]["tag_value_ids"] == ["application-tag-value-id"]

@@ -66,8 +66,17 @@ and help string.
 
 ## Classification evaluation
 
-Set `LANGSMITH_API_KEY` and run the checked-in synthetic classification dataset
-against the self-contained `personal` evaluation profile:
+Set `LANGSMITH_API_KEY` and `LANGSMITH_APPLICATION_TAG_VALUE_ID`, then run the
+checked-in synthetic classification dataset against the self-contained `personal`
+evaluation profile:
+
+```bash
+uv run python scripts/langsmith_application_tag_value_id.py
+```
+
+Copy the printed UUID to `LANGSMITH_APPLICATION_TAG_VALUE_ID` in `.env`. The
+script reads the `Application: email-agent` resource-tag value from the current
+LangSmith workspace.
 
 ```bash
 uv run email-agent evaluate classification --profile personal
@@ -78,15 +87,16 @@ email database. The profile owns its model configuration, prompts, categories,
 and synthetic examples under
 `src/email_agent/evaluations/profiles/personal/`.
 
-The first run creates the `email-agent-classification-personal` dataset in
-LangSmith. Later runs reuse that dataset and create a new experiment. The
-evaluation reports exact-match scores for category, reply requirement, priority,
-and escalation requirement. Use a new dataset name after changing examples:
+The first run creates the `classification-personal` dataset in LangSmith and
+assigns it to the configured application. Later runs reuse that dataset and create
+a new experiment. The evaluation reports exact-match scores for category, reply
+requirement, priority, and escalation requirement. Use a new dataset name after
+changing examples:
 
 ```bash
 uv run email-agent evaluate classification \
   --profile personal \
-  --dataset email-agent-classification-personal-v2
+  --dataset classification-personal-v2
 ```
 
 Copy the complete profile directory to create another evaluation profile. Keep

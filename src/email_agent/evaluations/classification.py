@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -115,13 +116,20 @@ def classification_target(classifier: EmailClassifier) -> Callable[[dict], dict]
     return classify
 
 
-def ensure_dataset(client: Client, name: str, examples: list[dict]) -> None:
+def ensure_dataset(
+    client: Client,
+    name: str,
+    examples: list[dict],
+    *,
+    application_tag_value_id: str | None = None,
+) -> None:
     """Create the LangSmith dataset and seed it on its first use."""
     if client.has_dataset(dataset_name=name):
         return
     dataset = client.create_dataset(
         dataset_name=name,
         description="Synthetic email examples for classification regression testing.",
+        tag_value_ids=[application_tag_value_id] if application_tag_value_id else None,
     )
     client.create_examples(dataset_id=dataset.id, examples=examples)
 
@@ -134,9 +142,14 @@ def run_classification_evaluation(
 ):
     """Run a self-contained classification profile as a LangSmith experiment."""
     profile = load_profile(profile_name)
-    dataset_name = dataset_name or f"email-agent-classification-{profile.name}"
+    dataset_name = dataset_name or f"classification-{profile.name}"
     client = client or Client()
-    ensure_dataset(client, dataset_name, profile.examples)
+    ensure_dataset(
+        client,
+        dataset_name,
+        profile.examples,
+        application_tag_value_id=os.getenv("LANGSMITH_APPLICATION_TAG_VALUE_ID"),
+    )
     classifier = EmailClassifier(
         profile.root, profile.agent, get_model(profile.agent.model)
     )
