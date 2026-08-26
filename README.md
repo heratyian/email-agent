@@ -70,7 +70,7 @@ that need replies.
 - Email Agent does not send email.
 - Draft generation creates a pending local suggestion.
 - Draft upload creates a mailbox draft for review.
-- Raw message bodies are not stored in SQLite.
+- 
 - Credentials and OAuth tokens are not logged.
 - Exact model content is logged only when model tracing is explicitly enabled.
 
