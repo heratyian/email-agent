@@ -101,3 +101,20 @@ uv run email-agent evaluate classification \
 
 Copy the complete profile directory to create another evaluation profile. Keep
 personally identifiable mailbox content out of checked-in evaluation data.
+
+## Drafting evaluation
+
+Run the checked-in drafting scenarios against the same self-contained profile:
+
+```bash
+uv run email-agent evaluate drafting --profile personal
+```
+
+The first run creates the `drafting-personal` dataset and assigns it to the
+configured LangSmith application. The evaluation checks recipient, escalation,
+and length deterministically. One structured model-judge call reports separate
+scores for required content, grounding, instruction following, tone, and safety.
+
+Drafting examples define required and forbidden behavior instead of one exact
+reply. Keep examples synthetic. When a real draft fails, add a sanitized
+reconstruction with the corrected criteria and retain it as a regression case.

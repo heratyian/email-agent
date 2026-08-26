@@ -59,10 +59,10 @@ EVALUATORS = [
 
 
 def load_examples(path: Path) -> list[dict[str, dict[str, Any]]]:
-    """Load checked-in synthetic classification examples."""
+    """Load checked-in evaluation examples."""
     examples = json.loads(path.read_text())
     if not isinstance(examples, list) or not examples:
-        raise ValueError("classification evaluation dataset must be a non-empty list")
+        raise ValueError("evaluation dataset must be a non-empty list")
     return examples
 
 
@@ -122,13 +122,14 @@ def ensure_dataset(
     examples: list[dict],
     *,
     application_tag_value_id: str | None = None,
+    description: str = "Synthetic email examples for classification regression testing.",
 ) -> None:
-    """Create the LangSmith dataset and seed it on its first use."""
+    """Create a LangSmith dataset and seed it on its first use."""
     if client.has_dataset(dataset_name=name):
         return
     dataset = client.create_dataset(
         dataset_name=name,
-        description="Synthetic email examples for classification regression testing.",
+        description=description,
         tag_value_ids=[application_tag_value_id] if application_tag_value_id else None,
     )
     client.create_examples(dataset_id=dataset.id, examples=examples)

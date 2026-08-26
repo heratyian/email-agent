@@ -89,6 +89,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["account", "validate"],
         ["evaluate"],
         ["evaluate", "classification"],
+        ["evaluate", "drafting"],
     ],
 )
 @pytest.mark.parametrize("flag", ["-v", "-vv", "--trace-model"])
@@ -158,6 +159,7 @@ def test_nested_commands_are_discoverable():
     expectations = {
         "account": ("add", "validate"),
         "drafts": ("show", "generate", "review", "upload", "delete"),
+        "evaluate": ("classification", "drafting"),
         "message": ("show",),
     }
     for group, commands in expectations.items():
