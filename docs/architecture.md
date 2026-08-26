@@ -79,14 +79,13 @@ Models perform two bounded tasks:
 Both tasks use validated structured output and no tools. Python owns provider
 calls, loops, retries, persistence, category changes, and draft upload.
 
-## Storage and migrations
+## Storage
 
-SQLite stores message metadata, classifications, draft suggestions, category
-synchronization state, and processing runs. It does not store raw email bodies.
-
-Ordered migrations run automatically at startup in transactions and are recorded
-in `schema_migrations`. Back up `data/email_agent.db` before an upgrade when it
-contains important local suggestions or history.
+SQLite stores synchronized plain-text message bodies, message metadata,
+classifications, draft suggestions, category synchronization state, and processing
+runs. The database is a disposable local cache. After a schema change, delete
+`data/email_agent.db` and run `inbox` to synchronize messages again. Deleting the
+database also deletes local classifications and draft suggestions.
 
 ## Diagnostic data
 

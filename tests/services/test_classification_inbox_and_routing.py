@@ -84,11 +84,16 @@ def test_inbox_assigns_local_ids_without_classifying_or_changing_mailbox(tmp_pat
     assert items[0].classification is None
     assert items[0].draft_ready is False
     assert Message.get_by_id(items[0].local_id).provider_message_id == "abc"
+    assert Message.get_by_id(items[0].local_id).text_body == "I cannot log in"
     assert provider.message_queries == [(20, True)]
     assert provider.synced == []
 
     repeated = InboxService(provider).list()
     assert repeated[0].local_id == items[0].local_id
+
+    provider.messages[0].text_body = "Updated body"
+    InboxService(provider).list()
+    assert Message.get_by_id(items[0].local_id).text_body == "Updated body"
 
 
 def test_inbox_displays_an_existing_classification_without_model_access(tmp_path):
@@ -110,15 +115,18 @@ def test_classification_saves_result_and_synchronizes_category_without_drafting(
     provider = FakeProvider(message)
     agents = FakeAgents()
     service = ClassificationService(make_agent(), provider, agents)
+    InboxService(provider).list()
+    provider.message_queries.clear()
 
-    result = service.classify_recent()[0]
+    result = service.classify_unclassified(message.account_id)[0]
 
     assert result.classification.intent == "login_problem"
     assert Message.find_email(message.account_id, message.provider_id).id == result.local_id
     assert list(Draft.pending()) == []
     assert provider.synced == [("abc", "action")]
-    assert service.classify_recent() == []
+    assert service.classify_unclassified(message.account_id) == []
     assert agents.classification_calls == 1
+    assert provider.message_queries == []
 
 
 def test_classification_can_reclassify_one_local_message(tmp_path):
@@ -140,9 +148,11 @@ def test_classification_tracks_an_imap_move(tmp_path):
 
     message = make_message()
     initialize_database(tmp_path / "test.db")
-    result = ClassificationService(
-        make_agent(), MovingProvider(message), FakeAgents()
-    ).classify_recent()[0]
+    provider = MovingProvider(message)
+    InboxService(provider).list()
+    result = ClassificationService(make_agent(), provider, FakeAgents()).classify_unclassified(
+        message.account_id
+    )[0]
 
     stored = Message.get_by_id(result.local_id)
     assert stored.provider_message_id == "abc"
@@ -160,12 +170,15 @@ def test_classification_isolates_one_failure_from_the_batch(tmp_path):
             if message_id == "fails":
                 raise RuntimeError("mailbox unavailable")
 
+    provider = MixedProvider([first, second])
+    InboxService(provider).list()
     results = ClassificationService(
-        make_agent(), MixedProvider([first, second]), FakeAgents()
-    ).classify_recent()
+        make_agent(), provider, FakeAgents()
+    ).classify_unclassified(first.account_id)
 
-    assert isinstance(results[0], ClassificationFailure)
-    assert not isinstance(results[1], ClassificationFailure)
+    results_by_id = {result.message.provider_id: result for result in results}
+    assert isinstance(results_by_id["fails"], ClassificationFailure)
+    assert not isinstance(results_by_id["succeeds"], ClassificationFailure)
 
 
 def test_failed_category_sync_remains_eligible_for_default_retry(tmp_path):
@@ -176,12 +189,14 @@ def test_failed_category_sync_remains_eligible_for_default_retry(tmp_path):
         def sync_category(self, message_id, destination, source_mailbox="INBOX", previous=None):
             raise RuntimeError("mailbox unavailable")
 
+    failing_provider = FailingProvider(message)
+    InboxService(failing_provider).list()
     failed = ClassificationService(
-        make_agent(), FailingProvider(message), FakeAgents()
-    ).classify_recent()
+        make_agent(), failing_provider, FakeAgents()
+    ).classify_unclassified(message.account_id)
     retried = ClassificationService(
         make_agent(), FakeProvider(message), FakeAgents()
-    ).classify_recent()
+    ).classify_unclassified(message.account_id)
 
     assert isinstance(failed[0], ClassificationFailure)
     assert not isinstance(retried[0], ClassificationFailure)

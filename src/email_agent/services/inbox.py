@@ -39,9 +39,7 @@ class InboxService:
         messages = self.provider.get_messages(limit, unread_only=unread_only)
         logger.info("Synchronizing %d recent inbox messages", len(messages))
         for message in sorted(messages, key=lambda item: item.received_at, reverse=True):
-            stored = Message.find_email(message.account_id, message.provider_id)
-            if stored is None:
-                stored = Message.upsert_email(message)
+            stored = Message.upsert_email(message)
             results.append(
                 InboxItem(
                     local_id=stored.id,

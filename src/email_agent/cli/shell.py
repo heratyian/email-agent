@@ -295,12 +295,12 @@ class InteractiveShell:
 
 HELP_TEXT = """Commands:
   /inbox [limit]                 Synchronize and show recent mail
-  /classify [LOCAL_ID]           Classify new mail or one message
-  /show LOCAL_ID                 Show an original message
-  /draft LOCAL_ID [instruction]  Generate or regenerate a suggestion
+  /classify [LOCAL_ID]           Classify unclassified mail (or one message)
+  /show LOCAL_ID                 Show a message
+  /draft LOCAL_ID [instruction]  Generate or regenerate a reply suggestion
   /drafts                        List pending suggestions
   /review                        Review pending suggestions
-  /upload LOCAL_ID               Upload to Drafts (never sends)
+  /upload LOCAL_ID               Upload draft to mailbox (never sends)
   /delete-draft LOCAL_ID         Delete a local suggestion
   /account [EMAIL]               List or switch accounts
   /verbose [off|on|debug]        Show or change verbosity

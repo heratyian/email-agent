@@ -110,8 +110,6 @@ class CommandHandlers:
         account_id: str,
         *,
         message_id: int | None = None,
-        limit: int = 20,
-        reclassify: bool = False,
     ) -> list[ClassifiedEmail | ClassificationFailure]:
         runtime = self.runtime(account_id)
         service = ClassificationService(
@@ -123,4 +121,4 @@ class CommandHandlers:
             if self.message_account(message_id) != account_id:
                 raise LookupError(f"message {message_id} does not belong to account {account_id}")
             return [service.classify_message(message_id)]
-        return service.classify_recent(limit, reclassify=reclassify)
+        return service.classify_unclassified(account_id)

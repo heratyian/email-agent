@@ -68,5 +68,5 @@ See the LangSmith documentation for
 
 - Keep `.env`, `accounts.yaml`, prompts, OAuth clients, and tokens out of Git.
 - Never include credentials or tokens in model prompts.
-- SQLite stores mailbox identifiers and workflow metadata, not raw message bodies.
-- Display and review commands retrieve message bodies from the provider when needed.
+- SQLite stores the plain-text bodies of messages synchronized by `inbox`.
+- Protect and back up the database as mailbox data.

@@ -132,11 +132,12 @@ def test_inbox_help_describes_a_non_ai_mailbox_view():
     assert "without using AI" in result.output
 
 
-def test_classify_help_exposes_explicit_reclassification():
+def test_classify_help_describes_stored_unclassified_messages():
     result = runner.invoke(app, ["classify", "--help"])
 
     assert result.exit_code == 0
-    assert "--all" in result.output
+    assert "--all" not in result.output
+    assert "unclassified" in result.output
     assert "managed mailbox labels" in result.output
 
 

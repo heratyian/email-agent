@@ -8,6 +8,7 @@ CREATE TABLE "messages" (
     "from_address" TEXT NOT NULL,
     "from_name" TEXT,
     "subject" TEXT NOT NULL,
+    "text_body" TEXT,
     "received_at" DATETIME NOT NULL,
     "provider_mailbox" TEXT NOT NULL,
     "provider_uid" TEXT NOT NULL,

@@ -26,7 +26,7 @@ particular:
 - Preserve account boundaries and per-message failure isolation.
 - Do not expose providers, database handles, credentials, or write-capable tools
   to models.
-- Make schema changes through ordered, transactional migrations.
+- Treat the SQLite database as a disposable local cache.
 
 ## Run focused checks
 
@@ -50,12 +50,10 @@ comments, and files.
 
 ## Database changes
 
-Add schema changes as the next ordered migration in
-`src/email_agent/db/migrations.py`. Migrations must upgrade an existing database
-in place and run in a transaction. Add a focused migration test that starts from
-the previous schema state.
-
-Do not assume that a user has a fresh database.
+Update the Peewee models and `src/email_agent/db/schema.sql` together. Delete
+`data/email_agent.db` after a schema change so the application creates the current
+schema. The email provider remains the source of truth, but deleting the database
+also deletes local classifications and draft suggestions.
 
 ## Documentation style
 

@@ -18,6 +18,7 @@ class Message(BaseModel):
     from_address = TextField()
     from_name = TextField(null=True)
     subject = TextField()
+    text_body = TextField(null=True)
     received_at = DateTimeField()
     provider_mailbox = TextField(default="INBOX")
     provider_uid = TextField()
@@ -42,6 +43,7 @@ class Message(BaseModel):
                 "from_address": email.from_address,
                 "from_name": email.from_name,
                 "subject": email.subject,
+                "text_body": email.text_body,
                 "received_at": email.received_at,
             },
         )
@@ -51,6 +53,7 @@ class Message(BaseModel):
         message.from_address = email.from_address
         message.from_name = email.from_name
         message.subject = email.subject
+        message.text_body = email.text_body
         message.received_at = email.received_at
         message.save()
         return message
@@ -61,6 +64,29 @@ class Message(BaseModel):
         return cls.get_or_none(
             (cls.account_id == account_id)
             & (cls.provider_message_id == provider_message_id)
+        )
+
+    @classmethod
+    def unclassified(cls, account_id: str) -> list[Message]:
+        """Return every stored message awaiting completed classification."""
+        return list(
+            cls.select()
+            .where((cls.account_id == account_id) & cls.classified_at.is_null())
+            .order_by(cls.received_at.desc())
+        )
+
+    def to_email(self) -> EmailMessage:
+        """Convert stored message content to the provider-neutral value object."""
+        return EmailMessage(
+            provider_id=self.provider_message_id,
+            thread_id=self.thread_id,
+            account_id=self.account_id,
+            mailbox=self.provider_mailbox,
+            from_address=self.from_address,
+            from_name=self.from_name,
+            subject=self.subject,
+            text_body=self.text_body,
+            received_at=self.received_at,
         )
 
     @classmethod

@@ -58,9 +58,10 @@ or prepare replies. Pass a positive limit to change the default batch size:
 
 ### Classify messages
 
-`/classify` classifies recent messages that do not have a completed
-classification. It saves category, priority, and reply requirements, then
-synchronizes the configured Gmail label or IMAP category folder:
+`/classify` classifies all stored messages that do not have a completed
+classification. Run `/inbox` first to synchronize recent messages. Classification
+saves category, priority, and reply requirements, then synchronizes the configured
+Gmail label or IMAP category folder:
 
 ```text
 > /classify

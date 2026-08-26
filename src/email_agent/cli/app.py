@@ -240,24 +240,16 @@ def inbox(
 @app.command()
 def classify(
     message_id: Annotated[
-        int | None, typer.Argument(help="Local message ID. Omit to classify recent new mail.")
+        int | None, typer.Argument(help="Local message ID. Omit to classify all unclassified mail.")
     ] = None,
     account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
-    limit: Annotated[int, typer.Option(help="Maximum recent messages to examine.")] = 20,
-    reclassify: Annotated[
-        bool, typer.Option("--all", help="Reclassify recent messages that already have results.")
-    ] = False,
 ):
     """Classify messages and synchronize their managed mailbox labels."""
     account_id = _account_id(account)
-    if limit < 1:
-        raise typer.BadParameter("limit must be at least 1")
     try:
         results = CommandHandlers().classify(
             account_id,
             message_id=message_id,
-            limit=limit,
-            reclassify=reclassify,
         )
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc

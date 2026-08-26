@@ -47,18 +47,13 @@ class ClassificationService:
         self.provider = provider
         self.agents = agents
 
-    def classify_recent(
-        self, limit: int = 20, *, reclassify: bool = False
+    def classify_unclassified(
+        self, account_id: str
     ) -> list[ClassifiedEmail | ClassificationFailure]:
-        """Classify recent unclassified messages, or all recent messages when requested."""
-        if limit < 1:
-            return []
+        """Classify every stored message without a completed classification."""
         results: list[ClassifiedEmail | ClassificationFailure] = []
-        for message in self.provider.get_messages(limit, unread_only=False):
-            stored = Message.find_email(message.account_id, message.provider_id)
-            if not reclassify and stored is not None and stored.classified_at is not None:
-                continue
-            results.append(self._classify(message, stored.id if stored else None))
+        for stored in Message.unclassified(account_id):
+            results.append(self._classify(stored.to_email(), stored.id))
         return results
 
     def classify_message(self, local_id: int) -> ClassifiedEmail | ClassificationFailure:
