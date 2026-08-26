@@ -4,6 +4,7 @@ import time
 from typing import Annotated
 
 import typer
+from dotenv import load_dotenv
 from typer.core import TyperGroup
 
 from email_agent.cli.commands import CommandHandlers
@@ -93,6 +94,7 @@ def main(
     ] = False,
 ):
     """Configure diagnostics shared by every command."""
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
     configure_logging(verbose)
     configure_model_tracing(trace_model)
     if trace_model:

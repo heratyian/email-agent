@@ -61,9 +61,8 @@ def test_unknown_account_is_rejected(tmp_path):
         Settings(tmp_path).account("missing@example.com")
 
 
-def test_env_file_configures_database_path(tmp_path, monkeypatch):
+def test_environment_configures_database_path(tmp_path, monkeypatch):
     write_account_config(tmp_path)
-    (tmp_path / ".env").write_text("EMAIL_AGENT_DATABASE=state/custom.db\n")
-    monkeypatch.delenv("EMAIL_AGENT_DATABASE", raising=False)
+    monkeypatch.setenv("EMAIL_AGENT_DATABASE", "state/custom.db")
     settings = Settings(tmp_path)
     assert settings.database_path == Path(tmp_path, "state/custom.db")

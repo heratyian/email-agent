@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import yaml
-from dotenv import load_dotenv
 
 from email_agent.config.models import AccountConfig
 
@@ -14,7 +13,6 @@ class Settings:
 
     def __init__(self, root: Path = PROJECT_ROOT):
         self.root = root.resolve()
-        load_dotenv(self.root / ".env")
         raw = yaml.safe_load((self.root / "accounts.yaml").read_text()) or {}
         if not isinstance(raw.get("accounts"), dict):
             raise TypeError("accounts.yaml must contain an 'accounts' mapping")

@@ -11,6 +11,17 @@ runner = CliRunner()
 cli = importlib.import_module("email_agent.cli.app")
 
 
+def test_cli_loads_project_env_before_running_a_command(monkeypatch):
+    loaded = []
+    monkeypatch.setattr(cli, "load_dotenv", lambda path, override: loaded.append((path, override)))
+    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
+
+    result = runner.invoke(app, ["account"])
+
+    assert result.exit_code == 0
+    assert loaded == [(cli.PROJECT_ROOT / ".env", True)]
+
+
 def test_top_level_help_presents_the_user_workflows():
     result = runner.invoke(app, ["--help"])
 
