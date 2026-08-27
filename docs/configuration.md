@@ -61,8 +61,9 @@ Email Agent stores workflow metadata in `data/email_agent.db` by default. Set
 `EMAIL_AGENT_DATABASE` in `.env` to use another path. A relative path is resolved
 from the project root.
 
-Raw email bodies are not stored in this database. Commands that display a message
-retrieve its current body from the provider.
+The database stores synchronized plain-text email bodies alongside message and
+workflow metadata. Commands that review an uploaded draft retrieve the current
+source message from the provider.
 
 ## Prompts
 

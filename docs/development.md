@@ -33,7 +33,7 @@ particular:
 Run the narrowest useful test while developing:
 
 ```bash
-uv run pytest tests/services/test_processing_inbox_and_routing.py
+uv run pytest tests/services/test_classification_inbox_and_routing.py
 uv run pytest tests/cli/test_shell.py
 ```
 
