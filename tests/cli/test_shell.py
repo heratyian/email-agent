@@ -21,7 +21,8 @@ class FakeHandlers:
     ("line", "method", "arguments"),
     [
         ("/inbox 5", "_inbox", ["5"]),
-        ("/ask recent important messages", "_ask", ["recent", "important", "messages"]),
+        ("/ask recent important messages", "_ask", ["recent important messages"]),
+        ("/ask What's the most important message?", "_ask", ["What's the most important message?"]),
         ("/classify 12", "_classify", ["12"]),
         ("/show 12", "_show", ["12"]),
         ("/draft 12 keep it short", "_draft", ["12", "keep", "it", "short"]),

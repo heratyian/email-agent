@@ -117,11 +117,19 @@ class InteractiveShell:
         if not line.startswith("/"):
             typer.echo("Natural-language routing is not enabled yet. Type /help for commands.")
             return
-        try:
-            parts = shlex.split(line)
-        except ValueError as exc:
-            raise ShellUsageError(str(exc)) from exc
-        command, args = parts[0].casefold(), parts[1:]
+        command_text = line.split(maxsplit=1)[0]
+        command = command_text.casefold()
+        if command == "/ask":
+            # Everything after /ask is treated as natural-language text
+            # rather than parsed with shell quotation rules.
+            # This works without escaping characters (like quotes ')
+            query = line[len(command_text) :].strip()
+            args = [query] if query else []
+        else:
+            try:
+                args = shlex.split(line)[1:]
+            except ValueError as exc:
+                raise ShellUsageError(str(exc)) from exc
         logger.info("Shell command: %s", command)
         methods = {
             "/inbox": self._inbox,
