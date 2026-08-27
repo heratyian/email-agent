@@ -9,7 +9,8 @@ same application services and persistence layer.
 - `providers/` adapts Gmail and IMAP operations.
 - `db/` owns SQLite persistence and migrations.
 - `services/` owns provider-independent application workflows.
-- `ai/` owns model construction, prompts, and structured model calls.
+- `ai/` owns model construction, prompts, embeddings, and bounded structured model calls.                                                                                
+- `search/` owns the LangGraph natural-language inbox search workflow.  
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
 
 `RuntimeFactory` provides workflow-specific constructors for inbox,
