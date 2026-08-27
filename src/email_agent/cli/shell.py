@@ -124,6 +124,7 @@ class InteractiveShell:
         logger.info("Shell command: %s", command)
         methods = {
             "/inbox": self._inbox,
+            "/ask": self._ask,
             "/classify": self._classify,
             "/show": self._show,
             "/draft": self._draft,
@@ -169,6 +170,11 @@ class InteractiveShell:
         typer.echo(f"Checking {account_id}...")
         result = self.handlers.run_inbox(account_id, limit)
         render_inbox_items(result.items)
+
+    def _ask(self, args: list[str]) -> None:
+        if not args:
+            raise ShellUsageError("/ask QUERY")
+        typer.echo(self.handlers.ask_inbox(self._active(), " ".join(args)))
 
     def _classify(self, args: list[str]) -> None:
         if len(args) > 1:
@@ -295,6 +301,7 @@ class InteractiveShell:
 
 HELP_TEXT = """Commands:
   /inbox [limit]                 Synchronize and show recent mail
+  /ask QUERY                     Ask a read-only question about classified mail
   /classify [LOCAL_ID]           Classify unclassified mail (or one message)
   /show LOCAL_ID                 Show a message
   /draft LOCAL_ID [instruction]  Generate or regenerate a reply suggestion

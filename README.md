@@ -50,6 +50,7 @@ The same workflows are available as scriptable CLI commands:
 ```bash
 uv run email-agent inbox --account you@gmail.com
 uv run email-agent classify --account you@gmail.com
+uv run email-agent ask --account you@gmail.com "find recent messages related to my job search"
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts generate 1
@@ -64,6 +65,34 @@ The `inbox` command only synchronizes and displays recent mail. It does not load
 a model or change mailbox labels. Run `classify` to classify unclassified messages
 and synchronize their managed labels. Generate drafts explicitly for messages
 that need replies.
+
+## Ask your inbox
+
+Ask read-only natural language questions about synchronized and classified mail:
+
+```bash
+uv run email-agent ask "show me recent important messages"
+uv run email-agent ask "find recent messages related to my job search"
+uv run email-agent ask "what emails from this week need a reply?"
+```
+
+The `/ask` workflow uses LangGraph to plan the search, run read-only LangChain
+tools, retrieve classified message summaries from Chroma, rank matches, and answer
+with local message IDs. It searches the local cache only and does not change
+mailbox labels, drafts, or messages.
+
+```mermaid
+flowchart TD
+    A[User query] --> B[Plan search]
+    B --> C[Structured local search tool]
+    B --> D[Chroma summary retrieval tool]
+    C --> E[Merge and rank]
+    D --> E
+    E --> F[Synthesize answer with message IDs]
+```
+
+Classification summaries are embedded instead of raw message bodies to reduce
+PII exposure. Summaries can still contain sensitive information.
 
 ## Safety and privacy
 

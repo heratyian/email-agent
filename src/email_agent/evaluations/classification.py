@@ -12,8 +12,8 @@ from typing import Any
 import yaml
 from langsmith import Client
 
+from email_agent.ai.chat_models import get_model
 from email_agent.ai.classifier import EmailClassifier
-from email_agent.ai.llm import get_model
 from email_agent.config import AgentConfig
 from email_agent.providers.models import EmailMessage, EmailThread
 

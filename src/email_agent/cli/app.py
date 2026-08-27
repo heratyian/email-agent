@@ -242,6 +242,20 @@ def inbox(
 
 
 @app.command()
+def ask(
+    query: Annotated[str, typer.Argument(help="Natural language inbox search request.")],
+    account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
+):
+    """Ask a read-only natural language question about classified local mail."""
+    account_id = _account_id(account)
+    try:
+        answer = CommandHandlers().ask_inbox(account_id, query)
+    except (RuntimeError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(answer)
+
+
+@app.command()
 def classify(
     message_id: Annotated[
         int | None, typer.Argument(help="Local message ID. Omit to classify all unclassified mail.")

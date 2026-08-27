@@ -9,8 +9,8 @@ from typing import Any
 from langsmith import Client
 from pydantic import BaseModel
 
+from email_agent.ai.chat_models import get_model
 from email_agent.ai.drafter import EmailDrafter
-from email_agent.ai.llm import get_model
 from email_agent.ai.outputs import ClassificationOutput
 from email_agent.evaluations.classification import ensure_dataset, load_examples, load_profile
 from email_agent.providers.models import EmailMessage, EmailThread

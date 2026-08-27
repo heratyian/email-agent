@@ -6,11 +6,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12",
+  "chromadb>=0.5",
   "google-api-python-client>=2.0",
   "google-auth-oauthlib>=1.2",
   "langchain>=1.0",
+  "langchain-chroma>=0.2",
   "langchain-ollama>=1.0",
   "langchain-openai>=1.0",
+  "langgraph>=0.2",
   "langsmith>=0.11.1",
   "peewee>=4.0,<5",
   "preserve-pii>=0.6,<0.7",

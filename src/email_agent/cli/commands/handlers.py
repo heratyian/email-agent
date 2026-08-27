@@ -7,6 +7,7 @@ from email_agent.db import Draft, Message
 from email_agent.generators import GeneratedAccount
 from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
+from email_agent.search import InboxSearchService
 from email_agent.services import (
     AccountService,
     ClassificationFailure,
@@ -55,11 +56,13 @@ class CommandHandlers:
         *,
         with_classifier: bool = True,
         with_drafter: bool = True,
+        with_model: bool = False,
     ) -> AccountRuntime:
         return self.runtime_factory.for_account(
             account_id,
             with_classifier=with_classifier,
             with_drafter=with_drafter,
+            with_model=with_model,
         )
 
     def show_message(self, message_id: int) -> MessageDetails:
@@ -116,6 +119,23 @@ class CommandHandlers:
         )
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
+
+    def ask_inbox(self, account_id: str, query: str) -> str:
+        """Answer a read-only natural language question about local email."""
+        runtime = self.runtime(
+            account_id,
+            with_classifier=False,
+            with_drafter=False,
+            with_model=True,
+        )
+        if runtime.model is None:
+            raise RuntimeError("This workflow requires a configured model")
+        return InboxSearchService(
+            runtime.settings,
+            runtime.account_id,
+            runtime.account,
+            runtime.model,
+        ).ask(query)
 
     def classify(
         self,
