@@ -45,25 +45,40 @@ class RuntimeFactory:
         self.settings = settings or Settings()
         initialize_database(self.settings.database_path)
 
-    def for_account(
+    def for_inbox(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for provider-only inbox operations."""
+        account = self.settings.account(account_id)
+        return self._build(account_id, account)
+
+    def for_classification(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for classifying messages."""
+        account = self.settings.account(account_id)
+        model = get_model(account.model)
+        classifier = EmailClassifier(self.settings.root, account.agent, model)
+        return self._build(account_id, account, model=model, classifier=classifier)
+
+    def for_drafting(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for drafting replies."""
+        account = self.settings.account(account_id)
+        model = get_model(account.model)
+        drafter = EmailDrafter(self.settings.root, account.agent, model)
+        return self._build(account_id, account, model=model, drafter=drafter)
+
+    def for_search(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for model-assisted inbox search."""
+        account = self.settings.account(account_id)
+        return self._build(account_id, account, model=get_model(account.model))
+
+    def _build(
         self,
         account_id: str,
+        account: AccountConfig,
         *,
-        with_classifier: bool = True,
-        with_drafter: bool = True,
-        with_model: bool = False,
+        model: object | None = None,
+        classifier: EmailClassifier | None = None,
+        drafter: EmailDrafter | None = None,
     ) -> AccountRuntime:
         logger.info("Loading account runtime for %s", account_id)
-        account = self.settings.account(account_id)
-        model = get_model(account.model) if with_classifier or with_drafter or with_model else None
-        if with_classifier:
-            classifier = EmailClassifier(self.settings.root, account.agent, model)
-        else:
-            classifier = None
-        if with_drafter:
-            drafter = EmailDrafter(self.settings.root, account.agent, model)
-        else:
-            drafter = None
         runtime = AccountRuntime(
             settings=self.settings,
             account_id=account_id,
@@ -77,7 +92,11 @@ class RuntimeFactory:
             "Runtime ready: provider=%s model=%s agents=%s database=%s",
             account.provider,
             account.model.model,
-            {"classifier": with_classifier, "drafter": with_drafter, "model": with_model},
+            {
+                "classifier": classifier is not None,
+                "drafter": drafter is not None,
+                "model": model is not None,
+            },
             self.settings.database_path,
         )
         return runtime

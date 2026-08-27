@@ -50,21 +50,6 @@ class CommandHandlers:
     def validate_account(self, account_id: str) -> AccountConfig:
         return self.settings.account(account_id)
 
-    def runtime(
-        self,
-        account_id: str,
-        *,
-        with_classifier: bool = True,
-        with_drafter: bool = True,
-        with_model: bool = False,
-    ) -> AccountRuntime:
-        return self.runtime_factory.for_account(
-            account_id,
-            with_classifier=with_classifier,
-            with_drafter=with_drafter,
-            with_model=with_model,
-        )
-
     def show_message(self, message_id: int) -> MessageDetails:
         return MessageService(self.settings).show(message_id)
 
@@ -87,7 +72,7 @@ class CommandHandlers:
         row = Message.get_or_none(Message.id == message_id)
         if not row:
             raise LookupError("message not found")
-        runtime = self.runtime(row.account_id, with_classifier=False)
+        runtime = self.runtime_factory.for_drafting(row.account_id)
         return DraftService().generate(
             message_id, runtime.provider, runtime.require_drafter(), instruction=instruction
         )
@@ -114,20 +99,13 @@ class CommandHandlers:
         *,
         unread: bool = False,
     ) -> InboxResult:
-        runtime = self.runtime(
-            account_id, with_classifier=False, with_drafter=False
-        )
+        runtime = self.runtime_factory.for_inbox(account_id)
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
 
     def ask_inbox(self, account_id: str, query: str) -> str:
         """Answer a read-only natural language question about local email."""
-        runtime = self.runtime(
-            account_id,
-            with_classifier=False,
-            with_drafter=False,
-            with_model=True,
-        )
+        runtime = self.runtime_factory.for_search(account_id)
         if runtime.model is None:
             raise RuntimeError("This workflow requires a configured model")
         return InboxSearchService(
@@ -143,7 +121,7 @@ class CommandHandlers:
         *,
         message_id: int | None = None,
     ) -> list[ClassifiedEmail | ClassificationFailure]:
-        runtime = self.runtime(account_id, with_drafter=False)
+        runtime = self.runtime_factory.for_classification(account_id)
         service = ClassificationService(
             runtime.account.agent,
             runtime.provider,

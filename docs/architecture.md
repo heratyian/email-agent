@@ -12,8 +12,10 @@ same application services and persistence layer.
 - `ai/` owns model construction, prompts, and structured model calls.
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
 
-`RuntimeFactory` builds the configured account, provider, database, model, and
-bounded AI operations for one account. Services do not import CLI code.
+`RuntimeFactory` provides workflow-specific constructors for inbox,
+classification, drafting, and search runtimes. Each runtime includes only the
+configured dependencies needed for that workflow. Services do not import CLI
+code.
 
 ## Command flow
 
