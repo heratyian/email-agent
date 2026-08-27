@@ -8,4 +8,8 @@ from email_agent.providers.imap import ImapProvider
 def create_mail_provider(account_id: str, config: AccountConfig, root: Path):
     if config.provider == "gmail":
         return GmailProvider(account_id, config, root)
-    return ImapProvider(account_id, config)
+    if config.provider == "imap":
+        return ImapProvider(account_id, config)
+    from email_agent.demo import DemoProvider
+
+    return DemoProvider(account_id, root)

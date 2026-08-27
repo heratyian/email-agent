@@ -60,7 +60,7 @@ class AccountConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["gmail", "imap"]
+    provider: Literal["gmail", "imap", "demo"]
     email: str = Field(exclude=True)
     credentials_file: str | None = None
     token_file: str | None = None

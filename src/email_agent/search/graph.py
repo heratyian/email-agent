@@ -7,6 +7,7 @@ from langgraph.graph import END, StateGraph
 
 from email_agent.search.models import (
     InboxSearchAnswer,
+    InboxSearchAnswerItem,
     InboxSearchPlan,
     InboxSearchResult,
     InboxSearchState,
@@ -29,9 +30,10 @@ SEARCH_ANSWER_PROMPT = """Answer the user's inbox search request using only the 
 
 Rules:
 - Do not invent messages.
-- Cite every message with its local ID in square brackets.
-- Be concise.
-- If there are no results, say that no matching local classified messages were found.
+- Return a concise plain-text summary with no Markdown.
+- Return each referenced message as a structured item with its local ID, subject, and explanation.
+- Use only local IDs provided in the results.
+- If there are no results, return an empty messages list and say that no matching local classified messages were found.
 - Mention that /ask only searches synchronized and classified local mail when useful.
 """
 
@@ -92,22 +94,44 @@ def results_context(results: list[InboxSearchResult]) -> str:
     )
 
 
-def fallback_answer(query: str, plan: InboxSearchPlan, results: list[InboxSearchResult]) -> str:
+def fallback_answer(
+    query: str, plan: InboxSearchPlan, results: list[InboxSearchResult]
+) -> InboxSearchAnswer:
     """Return a deterministic answer when model synthesis is unavailable."""
     if not results:
-        return "I did not find matching local classified messages. Run classify first for best /ask results."
-    lines = [f"I interpreted your request as: {plan.rationale}", "", f"Found {len(results)} messages:"]
-    for result in results:
-        sender = result.from_name or result.from_address
-        lines.extend(
-            [
-                "",
-                f"[{result.message_id}] {sender} — {result.subject}",
-                f"     Received: {result.received_at.date().isoformat()}",
-                f"     Why: {result.summary}",
-            ]
+        return InboxSearchAnswer(
+            summary=(
+                "I did not find matching local classified messages. "
+                "Run classify first for best /ask results."
+            )
         )
-    return "\n".join(lines)
+    return InboxSearchAnswer(
+        summary=f"Found {len(results)} messages. {plan.rationale}",
+        messages=[
+            InboxSearchAnswerItem(
+                message_id=result.message_id,
+                subject=result.subject,
+                explanation=result.summary,
+            )
+            for result in results
+        ],
+    )
+
+
+def ground_answer(
+    answer: InboxSearchAnswer, results: list[InboxSearchResult]
+) -> InboxSearchAnswer:
+    """Discard unknown IDs and restore subjects from retrieved messages."""
+    results_by_id = {result.message_id: result for result in results}
+    grounded = []
+    seen = set()
+    for item in answer.messages:
+        result = results_by_id.get(item.message_id)
+        if result is None or item.message_id in seen:
+            continue
+        seen.add(item.message_id)
+        grounded.append(item.model_copy(update={"subject": result.subject}))
+    return answer.model_copy(update={"messages": grounded})
 
 
 def build_inbox_search_graph(model, structured_search_tool, vector_search_tool):
@@ -152,7 +176,8 @@ def build_inbox_search_graph(model, structured_search_tool, vector_search_tool):
                 f"Results:\n{results_context(ranked) if ranked else 'No results.'}",
             ]
         )
-        answer = InboxSearchAnswer.model_validate(answerer.invoke(prompt)).answer
+        answer = InboxSearchAnswer.model_validate(answerer.invoke(prompt))
+        answer = ground_answer(answer, ranked)
         return {"answer": answer}
 
     graph = StateGraph(InboxSearchState)

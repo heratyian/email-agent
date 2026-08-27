@@ -8,6 +8,7 @@ from email_agent.generators import GeneratedAccount
 from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.search import InboxSearchService
+from email_agent.search.models import InboxSearchAnswer
 from email_agent.services import (
     AccountService,
     ClassificationFailure,
@@ -103,7 +104,7 @@ class CommandHandlers:
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
 
-    def ask_inbox(self, account_id: str, query: str) -> str:
+    def ask_inbox(self, account_id: str, query: str) -> InboxSearchAnswer:
         """Answer a read-only natural language question about local email."""
         runtime = self.runtime_factory.for_search(account_id)
         if runtime.model is None:

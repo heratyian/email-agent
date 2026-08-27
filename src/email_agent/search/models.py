@@ -38,10 +38,19 @@ class InboxSearchResult(BaseModel):
     score: float = 0
 
 
-class InboxSearchAnswer(BaseModel):
-    """Final answer for a natural language inbox search."""
+class InboxSearchAnswerItem(BaseModel):
+    """One grounded message reference in an inbox search answer."""
 
-    answer: str
+    message_id: int
+    subject: str
+    explanation: str
+
+
+class InboxSearchAnswer(BaseModel):
+    """Structured answer for a natural language inbox search."""
+
+    summary: str
+    messages: list[InboxSearchAnswerItem] = Field(default_factory=list)
 
 
 class InboxSearchState(TypedDict, total=False):
@@ -53,4 +62,4 @@ class InboxSearchState(TypedDict, total=False):
     structured_results: list[InboxSearchResult]
     vector_results: list[InboxSearchResult]
     ranked_results: list[InboxSearchResult]
-    answer: str
+    answer: InboxSearchAnswer

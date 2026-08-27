@@ -6,7 +6,8 @@ same application services and persistence layer.
 ## Package responsibilities
 
 - `config/` loads and validates account configuration.
-- `providers/` adapts Gmail and IMAP operations.
+- `providers/` adapts Gmail and IMAP operations. The demo supplies a local
+  synthetic provider through the same interface.
 - `db/` owns SQLite persistence and migrations.
 - `services/` owns provider-independent application workflows.
 - `ai/` owns model construction, prompts, embeddings, and bounded structured model calls.                                                                                

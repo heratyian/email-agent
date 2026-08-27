@@ -3,6 +3,7 @@ from wcwidth import wcswidth, wcwidth
 
 from email_agent.db import Draft
 from email_agent.providers.models import EmailMessage
+from email_agent.search.models import InboxSearchAnswer
 from email_agent.services import ClassificationFailure
 from email_agent.services.messages import MessageDetails
 
@@ -106,6 +107,14 @@ def render_inbox_items(items) -> None:
             draft_ready=item.draft_ready,
             color=priority_color(priority) if classification else None,
         )
+
+
+def render_inbox_search_answer(answer: InboxSearchAnswer) -> None:
+    """Render a grounded inbox answer without model-controlled Markdown."""
+    typer.echo(answer.summary)
+    for item in answer.messages:
+        typer.secho(f"\n[{item.message_id}] {item.subject}", fg=typer.colors.CYAN, bold=True)
+        typer.echo(f"    {item.explanation}")
 
 
 def render_classification_results(results) -> int:

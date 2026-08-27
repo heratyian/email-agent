@@ -13,6 +13,7 @@ from email_agent.cli.rendering import (
     render_classification_results,
     render_draft_list,
     render_inbox_items,
+    render_inbox_search_answer,
     render_message_details,
     render_review_item,
 )
@@ -174,7 +175,8 @@ class InteractiveShell:
     def _ask(self, args: list[str]) -> None:
         if not args:
             raise ShellUsageError("/ask QUERY")
-        typer.echo(self.handlers.ask_inbox(self._active(), " ".join(args)))
+        answer = self.handlers.ask_inbox(self._active(), " ".join(args))
+        render_inbox_search_answer(answer)
 
     def _classify(self, args: list[str]) -> None:
         if len(args) > 1:
@@ -316,5 +318,11 @@ HELP_TEXT = """Commands:
   /quit                          Exit the shell"""
 
 
-def run_shell(*, account_id: str | None = None, verbosity: int = 0, trace_model: bool = False) -> None:
-    InteractiveShell(ShellSession(account_id, verbosity, trace_model)).run()
+def run_shell(
+    *,
+    account_id: str | None = None,
+    verbosity: int = 0,
+    trace_model: bool = False,
+    handlers: CommandHandlers | None = None,
+) -> None:
+    InteractiveShell(ShellSession(account_id, verbosity, trace_model), handlers).run()

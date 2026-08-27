@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from email_agent.ai.outputs import ClassificationOutput
 from email_agent.db import Classification, Message, initialize_database
 from email_agent.providers.models import EmailMessage
-from email_agent.search.graph import merge_results
-from email_agent.search.models import InboxSearchPlan
+from email_agent.search.graph import ground_answer, merge_results
+from email_agent.search.models import InboxSearchAnswer, InboxSearchAnswerItem, InboxSearchPlan
 from email_agent.search.tools import search_classified_messages
 
 
@@ -76,3 +76,41 @@ def test_merge_results_combines_scores_for_same_message():
     assert merged[0].score == 5
     assert "Structured" in merged[0].reason
     assert "Vector" in merged[0].reason
+
+
+def test_ground_answer_discards_unknown_ids_and_restores_subjects():
+    from email_agent.search.models import InboxSearchResult
+
+    result = InboxSearchResult(
+        message_id=7,
+        from_address="sender@example.com",
+        subject="Authoritative subject",
+        received_at=datetime.now(UTC),
+        summary="A grounded summary.",
+        reason="Structured.",
+    )
+    answer = InboxSearchAnswer(
+        summary="Two possible messages.",
+        messages=[
+            InboxSearchAnswerItem(
+                message_id=7,
+                subject="Model-controlled subject",
+                explanation="This one matches.",
+            ),
+            InboxSearchAnswerItem(
+                message_id=7,
+                subject="Duplicate",
+                explanation="Duplicate reference.",
+            ),
+            InboxSearchAnswerItem(
+                message_id=99,
+                subject="Invented",
+                explanation="Unknown reference.",
+            ),
+        ],
+    )
+
+    grounded = ground_answer(answer, [result])
+
+    assert [item.message_id for item in grounded.messages] == [7]
+    assert grounded.messages[0].subject == "Authoritative subject"

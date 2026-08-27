@@ -28,7 +28,8 @@ uv run email-agent account validate
 
 Every account defines:
 
-- `provider`: `gmail` or `imap`.
+- `provider`: `gmail` or `imap`. The `demo` command owns the reserved synthetic
+  `demo` provider configuration.
 - `model`: the model provider, model name, temperature, and optional base URL.
 - `classification_prompt`: account-specific classification and escalation guidance.
 - `draft_prompt`: account-specific tone, style, and drafting guidance.

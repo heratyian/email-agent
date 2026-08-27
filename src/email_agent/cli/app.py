@@ -14,10 +14,11 @@ from email_agent.cli.rendering import (
     render_draft,
     render_draft_list,
     render_inbox_items,
+    render_inbox_search_answer,
     render_message_details,
     render_review_item,
 )
-from email_agent.config import PROJECT_ROOT
+from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.diagnostics import configure_model_tracing
 from email_agent.generators import (
     AccountProvider,
@@ -252,7 +253,28 @@ def ask(
         answer = CommandHandlers().ask_inbox(account_id, query)
     except (RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    typer.echo(answer)
+    render_inbox_search_answer(answer)
+
+
+@app.command()
+def demo():
+    """Create a persistent synthetic account and open its interactive shell."""
+    from email_agent.cli.shell import run_shell
+    from email_agent.demo import DEMO_ACCOUNT_ID, install_demo
+
+    installation = install_demo(PROJECT_ROOT)
+    action = "Created" if installation.account_created else "Loaded"
+    typer.secho(f"{action} synthetic account {DEMO_ACCOUNT_ID}.", fg=typer.colors.GREEN, bold=True)
+    mailbox_action = "Created" if installation.mailbox_created else "Loaded"
+    typer.echo(
+        f"{mailbox_action} a Faker mailbox with {installation.message_count} messages."
+    )
+    typer.echo("Classification, drafting, and search use the configured OpenAI model.")
+    typer.echo("Try /inbox, /classify, /ask, /draft, /review, and /upload.\n")
+    run_shell(
+        account_id=DEMO_ACCOUNT_ID,
+        handlers=CommandHandlers(Settings(PROJECT_ROOT)),
+    )
 
 
 @app.command()

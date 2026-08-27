@@ -3,6 +3,7 @@ from __future__ import annotations
 from email_agent.ai.embeddings import get_embedding_model
 from email_agent.config import AccountConfig, Settings
 from email_agent.search.graph import build_inbox_search_graph
+from email_agent.search.models import InboxSearchAnswer
 from email_agent.search.tools import make_search_tools
 
 
@@ -15,7 +16,7 @@ class InboxSearchService:
         self.account = account
         self.model = model
 
-    def ask(self, query: str) -> str:
+    def ask(self, query: str) -> InboxSearchAnswer:
         """Run the inbox search graph and return a grounded answer."""
         embeddings = get_embedding_model(self.account.model)
         tools = make_search_tools(

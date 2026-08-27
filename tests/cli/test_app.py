@@ -28,7 +28,7 @@ def test_top_level_help_presents_the_user_workflows():
     assert result.exit_code == 0
     assert all(
         command in result.output
-        for command in ("inbox", "classify", "drafts", "message", "account", "evaluate")
+        for command in ("inbox", "classify", "drafts", "message", "account", "evaluate", "demo")
     )
     assert all(
         command not in result.output
@@ -75,6 +75,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     "command",
     [
         ["inbox"],
+        ["demo"],
         ["classify"],
         ["drafts"],
         ["drafts", "show"],
@@ -144,6 +145,36 @@ def test_inbox_help_describes_a_non_ai_mailbox_view():
     assert "--watch" in result.output
     assert all(option not in result.output for option in ("--dry-run", "--reorganize", "--all"))
     assert "without using AI" in result.output
+
+
+def test_demo_inbox_reads_a_stable_newest_first_synthetic_mailbox(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("EMAIL_AGENT_DATABASE", raising=False)
+
+    result = runner.invoke(
+        app,
+        ["demo"],
+        input="/inbox 2\n/inbox 2\n/quit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Created synthetic account demo@example.test." in result.output
+    assert "Created a Faker mailbox with 40 messages." in result.output
+    assert result.output.count("Inbox · 2 messages") == 2
+    account_text = (tmp_path / "accounts.yaml").read_text()
+    assert "provider: demo" in account_text
+    assert "provider: openai" in account_text
+
+    from email_agent.db import Message
+    from email_agent.demo import DemoProvider
+
+    assert Message.select().where(Message.account_id == "demo@example.test").count() == 2
+    messages = DemoProvider("demo@example.test", tmp_path).get_messages()
+    assert len(messages) == 20
+    assert [message.received_at for message in messages] == sorted(
+        [message.received_at for message in messages], reverse=True
+    )
 
 
 def test_classify_help_describes_stored_unclassified_messages():

@@ -2,7 +2,8 @@
 
 Email Agent classifies recent email, organizes the mailbox, and prepares reply
 suggestions for review. It can upload a suggestion to the mailbox Drafts folder,
-but it cannot send email. It supports Gmail and IMAP accounts. 
+but it cannot send email. It supports Gmail and IMAP accounts plus a synthetic
+local demo account.
 
 ## Quick start
 
@@ -12,6 +13,22 @@ Install the application and create a private environment file:
 uv sync --extra dev
 cp .env.example .env
 ```
+
+<!-- TODO: break the 3 account type setups into separate file? -->
+Create a persistent synthetic account and open its interactive shell without a
+mailbox:
+
+```bash
+uv run email-agent demo
+```
+
+The first run creates a persistent mailbox of fictional Faker messages. `/inbox`
+reads its newest 20 messages by default, or the requested limit, without creating
+duplicates. Messages are ordered by received time, newest first.
+Classification, drafting, LangChain tools, Chroma RAG, and the LangGraph search
+workflow use the configured OpenAI model and require `OPENAI_API_KEY`. Try
+`/inbox`, `/classify`, `/ask which messages need a reply?`, `/draft LOCAL_ID`,
+`/review`, and `/upload LOCAL_ID`.
 
 Create a Gmail account from the personal template:
 
