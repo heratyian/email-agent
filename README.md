@@ -109,7 +109,9 @@ flowchart TD
 ```
 
 Classification summaries are embedded instead of raw message bodies to reduce
-PII exposure. Summaries can still contain sensitive information.
+PII exposure. Summaries can still contain sensitive information. The Chroma index
+is synchronized incrementally by `classify`, so unchanged messages are not
+embedded again. The read-only `/ask` workflow only searches the existing index.
 
 ## Safety and privacy
 

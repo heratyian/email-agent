@@ -40,7 +40,8 @@ Inbox synchronization, classification, and drafting are separate operations:
 1. `inbox` fetches recent provider messages, assigns stable local IDs, and shows
    any existing classification or draft state. It does not invoke a model.
 2. `classify` classifies unclassified messages with validated structured output,
-   saves each result, and synchronizes the configured provider category.
+   saves each result, synchronizes the configured provider category, and updates
+   the account's classification-summary vector index.
 3. `draft` generates a pending local suggestion for one classified message.
 4. Draft upload creates a provider draft only after an explicit command.
 
@@ -50,6 +51,7 @@ batch continue processing.
 
 Classification is idempotent at the account and provider-message boundary. Draft
 generation is always explicit and may replace only a pending local suggestion.
+The read-only `ask` workflow searches the vector index but never writes to it.
 
 ## Draft lifecycle
 

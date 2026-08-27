@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from peewee import JOIN
 
 from email_agent.db import Classification, Message
 from email_agent.search.models import InboxSearchPlan, InboxSearchResult
+
+logger = logging.getLogger(__name__)
 
 
 def summary_document_text(message: Message, classification: Classification) -> str:
@@ -27,12 +30,35 @@ def summary_document_text(message: Message, classification: Classification) -> s
     )
 
 
+def summary_document(message: Message, classification: Classification) -> Document:
+    """Build the searchable document for one classified message."""
+    return Document(
+        page_content=summary_document_text(message, classification),
+        metadata={
+            "message_id": message.id,
+            "account_id": message.account_id,
+            "from_address": message.from_address,
+            "from_name": message.from_name or "",
+            "subject": message.subject,
+            "received_at": message.received_at.isoformat(),
+            "category": classification.category or "",
+            "priority": classification.priority,
+            "requires_reply": classification.requires_reply,
+            "requires_escalation": classification.requires_escalation,
+            "summary": classification.summary,
+        },
+    )
+
+
 def classified_messages(account_id: str, *, limit: int = 500) -> list[tuple[Message, Classification]]:
     """Return recent classified messages for one account."""
     rows = (
         Message.select(Message, Classification)
             .join(Classification, JOIN.INNER)
-            .where(Message.account_id == account_id)
+            .where(
+                (Message.account_id == account_id)
+                & Message.classified_at.is_null(False)
+            )
             .order_by(Message.received_at.desc())
             .limit(limit)
     )
@@ -114,37 +140,64 @@ def chroma_collection_name(account_id: str) -> str:
     return f"email-agent-{safe}"[:63].strip("-")
 
 
-def build_summary_vector_store(account_id: str, persist_directory: Path, embeddings) -> Chroma:
-    """Rebuild the Chroma collection for classified message summaries."""
-    documents = [
-        Document(
-            page_content=summary_document_text(message, classification),
-            metadata={
-                "message_id": message.id,
-                "account_id": message.account_id,
-                "from_address": message.from_address,
-                "from_name": message.from_name or "",
-                "subject": message.subject,
-                "received_at": message.received_at.isoformat(),
-                "category": classification.category or "",
-                "priority": classification.priority,
-                "requires_reply": classification.requires_reply,
-                "requires_escalation": classification.requires_escalation,
-                "summary": classification.summary,
-            },
-        )
-        for message, classification in classified_messages(account_id)
-    ]
-    store = Chroma(
+def open_summary_vector_store(account_id: str, persist_directory: Path, embeddings) -> Chroma:
+    """Open the account's classification-summary collection."""
+    return Chroma(
         collection_name=chroma_collection_name(account_id),
         embedding_function=embeddings,
         persist_directory=str(persist_directory),
     )
-    existing = store.get(include=[])
-    if existing["ids"]:
-        store.delete(ids=existing["ids"])
-    if documents:
-        store.add_documents(documents, ids=[str(document.metadata["message_id"]) for document in documents])
+
+
+def sync_summary_vector_store(account_id: str, persist_directory: Path, embeddings) -> Chroma:
+    """Synchronize changed classified-message summaries with Chroma."""
+    documents_by_id = {
+        str(message.id): summary_document(message, classification)
+        for message, classification in classified_messages(account_id)
+    }
+    store = open_summary_vector_store(account_id, persist_directory, embeddings)
+    existing = store.get(include=["documents", "metadatas"])
+    existing_by_id = {
+        document_id: (document_text, metadata)
+        for document_id, document_text, metadata in zip(
+            existing["ids"],
+            existing["documents"] or [],
+            existing["metadatas"] or [],
+        )
+    }
+
+    stale_ids = sorted(set(existing_by_id) - set(documents_by_id))
+    new_ids = sorted(set(documents_by_id) - set(existing_by_id))
+    changed_ids = sorted(
+        document_id
+        for document_id in set(documents_by_id) & set(existing_by_id)
+        if existing_by_id[document_id]
+        != (
+            documents_by_id[document_id].page_content,
+            documents_by_id[document_id].metadata,
+        )
+    )
+
+    logger.debug(
+        "Summary index sync: account=%s unchanged=%d added=%d updated=%d deleted=%d",
+        account_id,
+        len(documents_by_id) - len(new_ids) - len(changed_ids),
+        len(new_ids),
+        len(changed_ids),
+        len(stale_ids),
+    )
+
+    if stale_ids:
+        store.delete(ids=stale_ids)
+    if new_ids:
+        store.add_documents(
+            [documents_by_id[document_id] for document_id in new_ids], ids=new_ids
+        )
+    if changed_ids:
+        store.update_documents(
+            changed_ids,
+            [documents_by_id[document_id] for document_id in changed_ids],
+        )
     return store
 
 
@@ -157,7 +210,7 @@ def retrieve_similar_summaries(
     limit: int = 8,
 ) -> list[InboxSearchResult]:
     """Retrieve classified message summaries with Chroma vector search."""
-    store = build_summary_vector_store(account_id, persist_directory, embeddings)
+    store = open_summary_vector_store(account_id, persist_directory, embeddings)
     documents = store.similarity_search_with_score(query, k=limit)
     results = []
     for document, distance in documents:

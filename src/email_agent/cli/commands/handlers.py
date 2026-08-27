@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from email_agent.ai.embeddings import get_embedding_model
 from email_agent.config import AccountConfig, Settings
 from email_agent.db import Draft, Message
 from email_agent.generators import GeneratedAccount
@@ -9,6 +10,7 @@ from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.search import InboxSearchService
 from email_agent.search.models import InboxSearchAnswer
+from email_agent.search.tools import sync_summary_vector_store
 from email_agent.services import (
     AccountService,
     ClassificationFailure,
@@ -131,5 +133,12 @@ class CommandHandlers:
         if message_id is not None:
             if self.message_account(message_id) != account_id:
                 raise LookupError(f"message {message_id} does not belong to account {account_id}")
-            return [service.classify_message(message_id)]
-        return service.classify_unclassified(account_id)
+            results = [service.classify_message(message_id)]
+        else:
+            results = service.classify_unclassified(account_id)
+        sync_summary_vector_store(
+            account_id,
+            runtime.settings.root / "data" / "chroma",
+            get_embedding_model(runtime.account.model),
+        )
+        return results
