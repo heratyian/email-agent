@@ -106,8 +106,8 @@ class CommandHandlers:
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
 
-    def ask_inbox(self, account_id: str, query: str) -> InboxSearchAnswer:
-        """Answer a read-only natural language question about local email."""
+    def search_inbox(self, account_id: str, query: str) -> InboxSearchAnswer:
+        """Search classified local email with a natural language query."""
         runtime = self.runtime_factory.for_search(account_id)
         if runtime.model is None:
             raise RuntimeError("This workflow requires a configured model")
@@ -116,7 +116,7 @@ class CommandHandlers:
             runtime.account_id,
             runtime.account,
             runtime.model,
-        ).ask(query)
+        ).search(query)
 
     def classify(
         self,

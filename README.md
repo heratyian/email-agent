@@ -27,7 +27,7 @@ reads its newest 20 messages by default, or the requested limit, without creatin
 duplicates. Messages are ordered by received time, newest first.
 Classification, drafting, LangChain tools, Chroma RAG, and the LangGraph search
 workflow use the configured OpenAI model and require `OPENAI_API_KEY`. Try
-`/inbox`, `/classify`, `/ask which messages need a reply?`, `/draft LOCAL_ID`,
+`/inbox`, `/classify`, `/search which messages need a reply?`, `/draft LOCAL_ID`,
 `/review`, and `/upload LOCAL_ID`.
 
 Create a Gmail account from the personal template:
@@ -67,7 +67,7 @@ The same workflows are available as scriptable CLI commands:
 ```bash
 uv run email-agent inbox --account you@gmail.com
 uv run email-agent classify --account you@gmail.com
-uv run email-agent ask --account you@gmail.com "find recent messages related to my job search"
+uv run email-agent search --account you@gmail.com "find recent messages related to my job search"
 uv run email-agent message show 1
 uv run email-agent drafts --account you@gmail.com
 uv run email-agent drafts generate 1
@@ -83,17 +83,17 @@ a model or change mailbox labels. Run `classify` to classify unclassified messag
 and synchronize their managed labels. Generate drafts explicitly for messages
 that need replies.
 
-## Ask your inbox
+## Search your inbox
 
-Ask read-only natural language questions about synchronized and classified mail:
+Search synchronized and classified mail with natural language queries:
 
 ```bash
-uv run email-agent ask "show me recent important messages"
-uv run email-agent ask "find recent messages related to my job search"
-uv run email-agent ask "what emails from this week need a reply?"
+uv run email-agent search "show me recent important messages"
+uv run email-agent search "find recent messages related to my job search"
+uv run email-agent search "what emails from this week need a reply?"
 ```
 
-The `/ask` workflow uses LangGraph to plan the search, run read-only LangChain
+The `/search` workflow uses LangGraph to plan the search, run read-only LangChain
 tools, retrieve classified message summaries from Chroma, rank matches, and answer
 with local message IDs. It searches the local cache only and does not change
 mailbox labels, drafts, or messages.
@@ -111,7 +111,7 @@ flowchart TD
 Classification summaries are embedded instead of raw message bodies to reduce
 PII exposure. Summaries can still contain sensitive information. The Chroma index
 is synchronized incrementally by `classify`, so unchanged messages are not
-embedded again. The read-only `/ask` workflow only searches the existing index.
+embedded again. The read-only `/search` workflow only searches the existing index.
 
 ## Safety and privacy
 

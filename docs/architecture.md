@@ -51,7 +51,7 @@ batch continue processing.
 
 Classification is idempotent at the account and provider-message boundary. Draft
 generation is always explicit and may replace only a pending local suggestion.
-The read-only `ask` workflow searches the vector index but never writes to it.
+The read-only `search` workflow searches the vector index but never writes to it.
 
 ## Draft lifecycle
 

@@ -119,10 +119,10 @@ class InteractiveShell:
             return
         command_text = line.split(maxsplit=1)[0]
         command = command_text.casefold()
-        if command == "/ask":
-            # Everything after /ask is treated as natural-language text
+        if command == "/search":
+            # Everything after /search is treated as natural-language text
             # rather than parsed with shell quotation rules.
-            # This works without escaping characters (like quotes ')
+            # This permits apostrophes and unmatched quotation marks in queries.
             query = line[len(command_text) :].strip()
             args = [query] if query else []
         else:
@@ -133,7 +133,7 @@ class InteractiveShell:
         logger.info("Shell command: %s", command)
         methods = {
             "/inbox": self._inbox,
-            "/ask": self._ask,
+            "/search": self._search,
             "/classify": self._classify,
             "/show": self._show,
             "/draft": self._draft,
@@ -180,10 +180,10 @@ class InteractiveShell:
         result = self.handlers.run_inbox(account_id, limit)
         render_inbox_items(result.items)
 
-    def _ask(self, args: list[str]) -> None:
+    def _search(self, args: list[str]) -> None:
         if not args:
-            raise ShellUsageError("/ask QUERY")
-        answer = self.handlers.ask_inbox(self._active(), " ".join(args))
+            raise ShellUsageError("/search QUERY")
+        answer = self.handlers.search_inbox(self._active(), " ".join(args))
         render_inbox_search_answer(answer)
 
     def _classify(self, args: list[str]) -> None:
@@ -311,7 +311,7 @@ class InteractiveShell:
 
 HELP_TEXT = """Commands:
   /inbox [limit]                 Synchronize and show recent mail
-  /ask QUERY                     Ask a read-only question about classified mail
+  /search QUERY                  Search classified local mail with natural language
   /classify [LOCAL_ID]           Classify unclassified mail (or one message)
   /show LOCAL_ID                 Show a message
   /draft LOCAL_ID [instruction]  Generate or regenerate a reply suggestion

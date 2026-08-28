@@ -28,7 +28,16 @@ def test_top_level_help_presents_the_user_workflows():
     assert result.exit_code == 0
     assert all(
         command in result.output
-        for command in ("inbox", "classify", "drafts", "message", "account", "evaluate", "demo")
+        for command in (
+            "inbox",
+            "search",
+            "classify",
+            "drafts",
+            "message",
+            "account",
+            "evaluate",
+            "demo",
+        )
     )
     assert all(
         command not in result.output
@@ -75,6 +84,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     "command",
     [
         ["inbox"],
+        ["search"],
         ["demo"],
         ["classify"],
         ["drafts"],

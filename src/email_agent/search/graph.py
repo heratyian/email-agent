@@ -34,7 +34,7 @@ Rules:
 - Return each referenced message as a structured item with its local ID, subject, and explanation.
 - Use only local IDs provided in the results.
 - If there are no results, return an empty messages list and say that no matching local classified messages were found.
-- Mention that /ask only searches synchronized and classified local mail when useful.
+- Mention that /search only searches synchronized and classified local mail when useful.
 """
 
 
@@ -102,7 +102,7 @@ def fallback_answer(
         return InboxSearchAnswer(
             summary=(
                 "I did not find matching local classified messages. "
-                "Run classify first for best /ask results."
+                "Run classify first for best /search results."
             )
         )
     return InboxSearchAnswer(

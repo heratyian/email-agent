@@ -243,14 +243,14 @@ def inbox(
 
 
 @app.command()
-def ask(
+def search(
     query: Annotated[str, typer.Argument(help="Natural language inbox search request.")],
     account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
 ):
-    """Ask a read-only natural language question about classified local mail."""
+    """Search synchronized and classified local mail using natural language."""
     account_id = _account_id(account)
     try:
-        answer = CommandHandlers().ask_inbox(account_id, query)
+        answer = CommandHandlers().search_inbox(account_id, query)
     except (RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     render_inbox_search_answer(answer)
@@ -270,7 +270,7 @@ def demo():
         f"{mailbox_action} a Faker mailbox with {installation.message_count} messages."
     )
     typer.echo("Classification, drafting, and search use the configured OpenAI model.")
-    typer.echo("Try /inbox, /classify, /ask, /draft, /review, and /upload.\n")
+    typer.echo("Try /inbox, /classify, /search, /draft, /review, and /upload.\n")
     run_shell(
         account_id=DEMO_ACCOUNT_ID,
         handlers=CommandHandlers(Settings(PROJECT_ROOT)),

@@ -16,7 +16,7 @@ class InboxSearchService:
         self.account = account
         self.model = model
 
-    def ask(self, query: str) -> InboxSearchAnswer:
+    def search(self, query: str) -> InboxSearchAnswer:
         """Run the inbox search graph and return a grounded answer."""
         embeddings = get_embedding_model(self.account.model)
         tools = make_search_tools(
