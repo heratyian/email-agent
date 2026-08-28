@@ -54,10 +54,10 @@ def triaged_messages(account_id: str, *, limit: int = 500) -> list[tuple[Message
     """Return recent triaged messages for one account."""
     rows = (
         Message.select(Message, Triage)
-            .join(Triage, JOIN.INNER)
-            .where(Message.account_id == account_id)
-            .order_by(Message.received_at.desc())
-            .limit(limit)
+        .join(Triage, JOIN.INNER)
+        .where(Message.account_id == account_id)
+        .order_by(Message.received_at.desc())
+        .limit(limit)
     )
     return [(message, Triage.get(Triage.message == message)) for message in rows]
 
@@ -189,9 +189,7 @@ def sync_summary_vector_store(account_id: str, persist_directory: Path, embeddin
     if stale_ids:
         store.delete(ids=stale_ids)
     if new_ids:
-        store.add_documents(
-            [documents_by_id[document_id] for document_id in new_ids], ids=new_ids
-        )
+        store.add_documents([documents_by_id[document_id] for document_id in new_ids], ids=new_ids)
     if changed_ids:
         store.update_documents(
             changed_ids,
