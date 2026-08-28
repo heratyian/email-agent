@@ -3,7 +3,7 @@ from wcwidth import wcswidth, wcwidth
 
 from email_agent.db import Draft
 from email_agent.providers.models import EmailMessage
-from email_agent.search.models import InboxSearchAnswer
+from email_agent.search.models import InboxSearchResponse
 from email_agent.services import ClassificationFailure
 from email_agent.services.messages import MessageDetails
 
@@ -15,6 +15,16 @@ INBOX_COLUMNS = (
     ("CATEGORY", 24),
     ("REPLY?", 6),
     ("DRAFT?", 7),
+)
+
+SEARCH_COLUMNS = (
+    ("ID", 6),
+    ("PRIORITY", 8),
+    ("FROM", 22),
+    ("SUBJECT", 36),
+    ("CATEGORY", 18),
+    ("REPLY?", 6),
+    ("MATCH", 42),
 )
 
 
@@ -56,10 +66,15 @@ def _cell(value: object, width: int) -> str:
     return text + " " * max(width - wcswidth(text), 0)
 
 
+def _table_header(columns: tuple[tuple[str, int], ...]) -> None:
+    """Render labels and a divider with shared terminal table styling."""
+    typer.secho("  ".join(_cell(label, width) for label, width in columns), bold=True)
+    typer.secho("  ".join("─" * width for _, width in columns), dim=True)
+
+
 def inbox_table_header() -> None:
     """Render labels and a divider for inbox-shaped rows."""
-    typer.secho("  ".join(_cell(label, width) for label, width in INBOX_COLUMNS), bold=True)
-    typer.secho("  ".join("─" * width for _, width in INBOX_COLUMNS), dim=True)
+    _table_header(INBOX_COLUMNS)
 
 
 def inbox_table_row(
@@ -109,12 +124,30 @@ def render_inbox_items(items) -> None:
         )
 
 
-def render_inbox_search_answer(answer: InboxSearchAnswer) -> None:
-    """Render a grounded inbox answer without model-controlled Markdown."""
-    typer.echo(answer.summary)
-    for item in answer.messages:
-        typer.secho(f"\n[{item.message_id}] {item.subject}", fg=typer.colors.CYAN, bold=True)
-        typer.echo(f"    {item.explanation}")
+def render_inbox_search_response(response: InboxSearchResponse) -> None:
+    """Render grounded search results using the inbox table conventions."""
+    typer.echo(response.summary)
+    typer.echo(f"\nSearch · {len(response.results)} messages")
+    if response.results:
+        _table_header(SEARCH_COLUMNS)
+    for result in response.results:
+        priority = result.priority or "—"
+        values = (
+            f"#{result.message_id}",
+            priority.upper(),
+            result.from_name or result.from_address,
+            result.subject,
+            category_name(result.category),
+            "YES" if result.requires_reply else "NO" if result.requires_reply is False else "—",
+            result.match_explanation or result.summary,
+        )
+        typer.secho(
+            "  ".join(
+                _cell(value, width)
+                for value, (_, width) in zip(values, SEARCH_COLUMNS)
+            ),
+            fg=priority_color(priority),
+        )
 
 
 def render_classification_results(results) -> int:

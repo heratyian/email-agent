@@ -1,11 +1,13 @@
+from datetime import UTC, datetime
+
 from email_agent.cli.rendering import (
     _cell,
     category_name,
     inbox_table_header,
     inbox_table_row,
-    render_inbox_search_answer,
+    render_inbox_search_response,
 )
-from email_agent.search.models import InboxSearchAnswer, InboxSearchAnswerItem
+from email_agent.search.models import InboxSearchResponse, InboxSearchResult
 
 
 def test_category_name_formats_optional_category():
@@ -41,22 +43,34 @@ def test_inbox_cell_uses_terminal_width_for_emojis():
     assert _cell("One two three 🚀", 12) == "One two thr…"
 
 
-def test_inbox_search_answer_has_consistent_terminal_format(capsys):
-    render_inbox_search_answer(
-        InboxSearchAnswer(
+def test_inbox_search_response_uses_inbox_table_format(capsys):
+    render_inbox_search_response(
+        InboxSearchResponse(
             summary="Two messages need attention.",
-            messages=[
-                InboxSearchAnswerItem(
+            results=[
+                InboxSearchResult(
                     message_id=12,
+                    from_address="legal@example.test",
+                    from_name="Legal Team",
                     subject="Contract approval",
-                    explanation="A decision is due tomorrow.",
+                    received_at=datetime.now(UTC),
+                    category="action",
+                    priority="high",
+                    requires_reply=True,
+                    summary="A contract decision is due.",
+                    reason="Matched structured filters.",
+                    match_explanation="A decision is due tomorrow.",
                 )
             ],
         )
     )
 
-    assert capsys.readouterr().out == (
-        "Two messages need attention.\n\n"
-        "[12] Contract approval\n"
-        "    A decision is due tomorrow.\n"
+    output = capsys.readouterr().out
+    assert "Two messages need attention." in output
+    assert "Search · 1 messages" in output
+    assert all(label in output for label in ("ID", "PRIORITY", "FROM", "MATCH"))
+    assert all(
+        value in output
+        for value in ("#12", "HIGH", "Legal Team", "Contract approval", "YES")
     )
+    assert "A decision is due tomorrow." in output

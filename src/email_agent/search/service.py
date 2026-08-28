@@ -3,12 +3,12 @@ from __future__ import annotations
 from email_agent.ai.embeddings import get_embedding_model
 from email_agent.config import AccountConfig, Settings
 from email_agent.search.graph import build_inbox_search_graph
-from email_agent.search.models import InboxSearchAnswer
+from email_agent.search.models import InboxSearchResponse
 from email_agent.search.tools import make_search_tools
 
 
 class InboxSearchService:
-    """Answer read-only natural language questions about classified local email."""
+    """Search classified local email with natural language queries."""
 
     def __init__(self, settings: Settings, account_id: str, account: AccountConfig, model):
         self.settings = settings
@@ -16,8 +16,8 @@ class InboxSearchService:
         self.account = account
         self.model = model
 
-    def search(self, query: str) -> InboxSearchAnswer:
-        """Run the inbox search graph and return a grounded answer."""
+    def search(self, query: str) -> InboxSearchResponse:
+        """Run the inbox search graph and return grounded search results."""
         embeddings = get_embedding_model(self.account.model)
         tools = make_search_tools(
             self.account_id,
@@ -38,4 +38,4 @@ class InboxSearchService:
                 },
             },
         )
-        return result["answer"]
+        return result["response"]

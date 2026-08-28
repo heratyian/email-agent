@@ -11,7 +11,7 @@ from langchain_core.tools import tool
 from peewee import JOIN
 
 from email_agent.db import Classification, Message
-from email_agent.search.models import InboxSearchPlan, InboxSearchResult
+from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,9 @@ def result_from_message(
     )
 
 
-def search_classified_messages(account_id: str, plan: InboxSearchPlan) -> list[InboxSearchResult]:
+def search_classified_messages(
+    account_id: str, plan: InboxSearchPlanOutput
+) -> list[InboxSearchResult]:
     """Search classified local messages with deterministic structured filters."""
     cutoff = None
     if plan.recent_days is not None:
@@ -240,7 +242,7 @@ def make_search_tools(account_id: str, persist_directory: Path, embeddings):
     @tool
     def search_local_classified_messages(plan_json: str) -> str:
         """Search local classified messages with structured inbox filters."""
-        plan = InboxSearchPlan.model_validate_json(plan_json)
+        plan = InboxSearchPlanOutput.model_validate_json(plan_json)
         results = search_classified_messages(account_id, plan)
         return json.dumps([result.model_dump(mode="json") for result in results])
 

@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from langgraph.graph import END, StateGraph
 
 from email_agent.search.models import (
-    InboxSearchAnswer,
-    InboxSearchAnswerItem,
-    InboxSearchPlan,
+    InboxSearchItemOutput,
+    InboxSearchOutput,
+    InboxSearchPlanOutput,
+    InboxSearchResponse,
     InboxSearchResult,
     InboxSearchState,
 )
@@ -38,10 +39,10 @@ Rules:
 """
 
 
-def default_plan(query: str) -> InboxSearchPlan:
+def default_plan(query: str) -> InboxSearchPlanOutput:
     """Return a safe search plan when model planning is unavailable."""
     lowered = query.casefold()
-    return InboxSearchPlan(
+    return InboxSearchPlanOutput(
         query=query,
         topic=query,
         priority="high" if "important" in lowered else None,
@@ -94,21 +95,21 @@ def results_context(results: list[InboxSearchResult]) -> str:
     )
 
 
-def fallback_answer(
-    query: str, plan: InboxSearchPlan, results: list[InboxSearchResult]
-) -> InboxSearchAnswer:
-    """Return a deterministic answer when model synthesis is unavailable."""
+def fallback_output(
+    query: str, plan: InboxSearchPlanOutput, results: list[InboxSearchResult]
+) -> InboxSearchOutput:
+    """Return deterministic model-shaped output when synthesis is unavailable."""
     if not results:
-        return InboxSearchAnswer(
+        return InboxSearchOutput(
             summary=(
                 "I did not find matching local classified messages. "
                 "Run classify first for best /search results."
             )
         )
-    return InboxSearchAnswer(
+    return InboxSearchOutput(
         summary=f"Found {len(results)} messages. {plan.rationale}",
         messages=[
-            InboxSearchAnswerItem(
+            InboxSearchItemOutput(
                 message_id=result.message_id,
                 subject=result.subject,
                 explanation=result.summary,
@@ -118,31 +119,46 @@ def fallback_answer(
     )
 
 
-def ground_answer(
-    answer: InboxSearchAnswer, results: list[InboxSearchResult]
-) -> InboxSearchAnswer:
+def ground_output(
+    output: InboxSearchOutput, results: list[InboxSearchResult]
+) -> InboxSearchOutput:
     """Discard unknown IDs and restore subjects from retrieved messages."""
     results_by_id = {result.message_id: result for result in results}
     grounded = []
     seen = set()
-    for item in answer.messages:
+    for item in output.messages:
         result = results_by_id.get(item.message_id)
         if result is None or item.message_id in seen:
             continue
         seen.add(item.message_id)
         grounded.append(item.model_copy(update={"subject": result.subject}))
-    return answer.model_copy(update={"messages": grounded})
+    return output.model_copy(update={"messages": grounded})
+
+
+def build_search_response(
+    output: InboxSearchOutput, results: list[InboxSearchResult]
+) -> InboxSearchResponse:
+    """Attach model explanations to authoritative ranked result metadata."""
+    results_by_id = {result.message_id: result for result in results}
+    grounded_results = [
+        results_by_id[item.message_id].model_copy(
+            update={"match_explanation": item.explanation}
+        )
+        for item in output.messages
+        if item.message_id in results_by_id
+    ]
+    return InboxSearchResponse(summary=output.summary, results=grounded_results)
 
 
 def build_inbox_search_graph(model, structured_search_tool, vector_search_tool):
     """Build the read-only LangGraph inbox search workflow."""
-    planner = model.with_structured_output(InboxSearchPlan)
-    answerer = model.with_structured_output(InboxSearchAnswer)
+    planner = model.with_structured_output(InboxSearchPlanOutput)
+    synthesizer = model.with_structured_output(InboxSearchOutput)
 
     def plan_search(state: InboxSearchState) -> dict:
         today = datetime.now(UTC).date().isoformat()
         prompt = f"{SEARCH_PLANNER_PROMPT}\n\nToday: {today}\nUser query: {state['user_query']}"
-        plan = InboxSearchPlan.model_validate(planner.invoke(prompt))
+        plan = InboxSearchPlanOutput.model_validate(planner.invoke(prompt))
         return {"plan": plan}
 
     def structured_search(state: InboxSearchState) -> dict:
@@ -176,9 +192,12 @@ def build_inbox_search_graph(model, structured_search_tool, vector_search_tool):
                 f"Results:\n{results_context(ranked) if ranked else 'No results.'}",
             ]
         )
-        answer = InboxSearchAnswer.model_validate(answerer.invoke(prompt))
-        answer = ground_answer(answer, ranked)
-        return {"answer": answer}
+        output = InboxSearchOutput.model_validate(synthesizer.invoke(prompt))
+        output = ground_output(output, ranked)
+        return {
+            "output": output,
+            "response": build_search_response(output, ranked),
+        }
 
     graph = StateGraph(InboxSearchState)
     graph.add_node("plan_search", plan_search)

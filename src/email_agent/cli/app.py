@@ -14,7 +14,7 @@ from email_agent.cli.rendering import (
     render_draft,
     render_draft_list,
     render_inbox_items,
-    render_inbox_search_answer,
+    render_inbox_search_response,
     render_message_details,
     render_review_item,
 )
@@ -250,10 +250,10 @@ def search(
     """Search synchronized and classified local mail using natural language."""
     account_id = _account_id(account)
     try:
-        answer = CommandHandlers().search_inbox(account_id, query)
+        response = CommandHandlers().search_inbox(account_id, query)
     except (RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    render_inbox_search_answer(answer)
+    render_inbox_search_response(response)
 
 
 @app.command()

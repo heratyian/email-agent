@@ -6,8 +6,8 @@ from typing import TypedDict
 from pydantic import BaseModel, Field
 
 
-class InboxSearchPlan(BaseModel):
-    """Structured plan for one natural language inbox search."""
+class InboxSearchPlanOutput(BaseModel):
+    """Structured model plan for one natural language inbox search."""
 
     query: str
     topic: str | None = None
@@ -36,21 +36,29 @@ class InboxSearchResult(BaseModel):
     summary: str
     reason: str
     score: float = 0
+    match_explanation: str | None = None
 
 
-class InboxSearchAnswerItem(BaseModel):
-    """One grounded message reference in an inbox search answer."""
+class InboxSearchItemOutput(BaseModel):
+    """One model-selected search result and its explanation."""
 
     message_id: int
     subject: str
     explanation: str
 
 
-class InboxSearchAnswer(BaseModel):
-    """Structured answer for a natural language inbox search."""
+class InboxSearchOutput(BaseModel):
+    """Model-produced summary and selected search result references."""
 
     summary: str
-    messages: list[InboxSearchAnswerItem] = Field(default_factory=list)
+    messages: list[InboxSearchItemOutput] = Field(default_factory=list)
+
+
+class InboxSearchResponse(BaseModel):
+    """Grounded search response returned to application interfaces."""
+
+    summary: str
+    results: list[InboxSearchResult] = Field(default_factory=list)
 
 
 class InboxSearchState(TypedDict, total=False):
@@ -58,8 +66,9 @@ class InboxSearchState(TypedDict, total=False):
 
     account_id: str
     user_query: str
-    plan: InboxSearchPlan
+    plan: InboxSearchPlanOutput
     structured_results: list[InboxSearchResult]
     vector_results: list[InboxSearchResult]
     ranked_results: list[InboxSearchResult]
-    answer: InboxSearchAnswer
+    output: InboxSearchOutput
+    response: InboxSearchResponse

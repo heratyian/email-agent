@@ -13,7 +13,7 @@ from email_agent.cli.rendering import (
     render_classification_results,
     render_draft_list,
     render_inbox_items,
-    render_inbox_search_answer,
+    render_inbox_search_response,
     render_message_details,
     render_review_item,
 )
@@ -183,8 +183,8 @@ class InteractiveShell:
     def _search(self, args: list[str]) -> None:
         if not args:
             raise ShellUsageError("/search QUERY")
-        answer = self.handlers.search_inbox(self._active(), " ".join(args))
-        render_inbox_search_answer(answer)
+        response = self.handlers.search_inbox(self._active(), " ".join(args))
+        render_inbox_search_response(response)
 
     def _classify(self, args: list[str]) -> None:
         if len(args) > 1:

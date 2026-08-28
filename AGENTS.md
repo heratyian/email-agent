@@ -17,6 +17,7 @@ Follow the [Ruby on Rails Doctrine](https://rubyonrails.org/doctrine), adapted t
 - Prefer simple, explicit, unsurprising Python over cleverness, indirection, or premature abstraction.
 - Code should be self-documenting. Use docstrings liberally. Use Simplified Technical English for documentation.
 - Use descriptive domain names; avoid acronyms, abbreviations, and shorthand.
+- Name structured model output schemas with an `Output` suffix.
 - Keep the happy path obvious. Prefer guard clauses and local error handling.
 - Use functions, classes, dataclasses, Pydantic models, comprehensions, and loops where each is clearest.
 - Abstract only stable concepts with multiple real uses. Readable duplication is acceptable.

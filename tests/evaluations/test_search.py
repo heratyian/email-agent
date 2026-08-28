@@ -14,9 +14,10 @@ from email_agent.evaluations.search import (
     top_result_accuracy,
 )
 from email_agent.search.models import (
-    InboxSearchAnswer,
-    InboxSearchAnswerItem,
-    InboxSearchPlan,
+    InboxSearchItemOutput,
+    InboxSearchOutput,
+    InboxSearchPlanOutput,
+    InboxSearchResponse,
     InboxSearchResult,
 )
 
@@ -27,7 +28,7 @@ def test_search_target_exposes_stable_keys_from_production_graph_state():
             assert state["user_query"] == "What needs a reply?"
             assert "evaluation" in config["tags"]
             return {
-                "plan": InboxSearchPlan(
+                "plan": InboxSearchPlanOutput(
                     query=state["user_query"],
                     requires_reply=True,
                     rationale="Find reply requests.",
@@ -42,13 +43,27 @@ def test_search_target_exposes_stable_keys_from_production_graph_state():
                         reason="Matched.",
                     )
                 ],
-                "answer": InboxSearchAnswer(
+                "output": InboxSearchOutput(
                     summary="One message needs a reply.",
                     messages=[
-                        InboxSearchAnswerItem(
+                        InboxSearchItemOutput(
                             message_id=7,
                             subject="Reply requested",
                             explanation="The sender asked a question.",
+                        )
+                    ],
+                ),
+                "response": InboxSearchResponse(
+                    summary="One message needs a reply.",
+                    results=[
+                        InboxSearchResult(
+                            message_id=7,
+                            from_address="sender@example.test",
+                            subject="Reply requested",
+                            received_at=datetime.now(UTC),
+                            summary="A reply is needed.",
+                            reason="Matched.",
+                            match_explanation="The sender asked a question.",
                         )
                     ],
                 ),

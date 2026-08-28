@@ -5,8 +5,12 @@ from email_agent.ai.outputs import ClassificationOutput
 from email_agent.cli.commands.handlers import CommandHandlers
 from email_agent.db import Classification, Message, initialize_database
 from email_agent.providers.models import EmailMessage
-from email_agent.search.graph import ground_answer, merge_results
-from email_agent.search.models import InboxSearchAnswer, InboxSearchAnswerItem, InboxSearchPlan
+from email_agent.search.graph import build_search_response, ground_output, merge_results
+from email_agent.search.models import (
+    InboxSearchItemOutput,
+    InboxSearchOutput,
+    InboxSearchPlanOutput,
+)
 from email_agent.search.tools import (
     retrieve_similar_summaries,
     search_classified_messages,
@@ -55,7 +59,7 @@ def test_structured_search_filters_classified_messages(tmp_path):
 
     results = search_classified_messages(
         "person@example.com",
-        InboxSearchPlan(
+        InboxSearchPlanOutput(
             query="what needs reply",
             requires_reply=True,
             recent_days=14,
@@ -87,7 +91,7 @@ def test_merge_results_combines_scores_for_same_message():
     assert "Vector" in merged[0].reason
 
 
-def test_ground_answer_discards_unknown_ids_and_restores_subjects():
+def test_ground_output_discards_unknown_ids_and_restores_subjects():
     from email_agent.search.models import InboxSearchResult
 
     result = InboxSearchResult(
@@ -98,20 +102,20 @@ def test_ground_answer_discards_unknown_ids_and_restores_subjects():
         summary="A grounded summary.",
         reason="Structured.",
     )
-    answer = InboxSearchAnswer(
+    output = InboxSearchOutput(
         summary="Two possible messages.",
         messages=[
-            InboxSearchAnswerItem(
+            InboxSearchItemOutput(
                 message_id=7,
                 subject="Model-controlled subject",
                 explanation="This one matches.",
             ),
-            InboxSearchAnswerItem(
+            InboxSearchItemOutput(
                 message_id=7,
                 subject="Duplicate",
                 explanation="Duplicate reference.",
             ),
-            InboxSearchAnswerItem(
+            InboxSearchItemOutput(
                 message_id=99,
                 subject="Invented",
                 explanation="Unknown reference.",
@@ -119,10 +123,42 @@ def test_ground_answer_discards_unknown_ids_and_restores_subjects():
         ],
     )
 
-    grounded = ground_answer(answer, [result])
+    grounded = ground_output(output, [result])
 
     assert [item.message_id for item in grounded.messages] == [7]
     assert grounded.messages[0].subject == "Authoritative subject"
+
+
+def test_search_response_combines_explanations_with_authoritative_result_metadata():
+    from email_agent.search.models import InboxSearchResult
+
+    result = InboxSearchResult(
+        message_id=7,
+        from_address="legal@example.test",
+        from_name="Legal Team",
+        subject="Contract approval",
+        received_at=datetime.now(UTC),
+        priority="high",
+        summary="A contract decision is due.",
+        reason="Matched.",
+    )
+    output = InboxSearchOutput(
+        summary="One contract needs attention.",
+        messages=[
+            InboxSearchItemOutput(
+                message_id=7,
+                subject="Contract approval",
+                explanation="A decision is due tomorrow.",
+            )
+        ],
+    )
+
+    response = build_search_response(output, [result])
+
+    assert response.summary == "One contract needs attention."
+    assert response.results[0].from_name == "Legal Team"
+    assert response.results[0].priority == "high"
+    assert response.results[0].match_explanation == "A decision is due tomorrow."
 
 
 def test_summary_vector_store_only_changes_outdated_documents(tmp_path, monkeypatch):

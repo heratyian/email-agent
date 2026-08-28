@@ -63,14 +63,14 @@ def search_target(graph, keys_by_id: dict[int, str]) -> Callable[[dict], dict]:
                 "metadata": {"workflow": "inbox-search-evaluation"},
             },
         )
-        answer = result["answer"]
+        response = result["response"]
         return {
             "plan": result["plan"].model_dump(mode="json"),
             "retrieved_keys": [
                 keys_by_id[item.message_id] for item in result.get("ranked_results", [])
             ],
-            "cited_keys": [keys_by_id[item.message_id] for item in answer.messages],
-            "summary": answer.summary,
+            "cited_keys": [keys_by_id[item.message_id] for item in response.results],
+            "summary": response.summary,
         }
 
     return search

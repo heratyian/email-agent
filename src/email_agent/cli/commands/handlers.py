@@ -9,7 +9,7 @@ from email_agent.generators import GeneratedAccount
 from email_agent.providers.models import EmailMessage
 from email_agent.runtime import AccountRuntime, RuntimeFactory
 from email_agent.search import InboxSearchService
-from email_agent.search.models import InboxSearchAnswer
+from email_agent.search.models import InboxSearchResponse
 from email_agent.search.tools import sync_summary_vector_store
 from email_agent.services import (
     AccountService,
@@ -106,7 +106,7 @@ class CommandHandlers:
         items = self.inbox_items(runtime, limit, unread=unread)
         return InboxResult(runtime, items)
 
-    def search_inbox(self, account_id: str, query: str) -> InboxSearchAnswer:
+    def search_inbox(self, account_id: str, query: str) -> InboxSearchResponse:
         """Search classified local email with a natural language query."""
         runtime = self.runtime_factory.for_search(account_id)
         if runtime.model is None:
