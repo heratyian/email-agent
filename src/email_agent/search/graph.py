@@ -17,7 +17,7 @@ from email_agent.search.models import (
 SEARCH_PLANNER_PROMPT = """Convert the user's inbox search request into a structured search plan.
 
 Rules:
-- Search only locally synchronized, classified email.
+- Search only locally synchronized, triaged email.
 - Do not plan write actions.
 - Interpret "recent" as the last 14 days.
 - Interpret "important" as high priority, escalation, security, finance, legal, deadlines, or messages needing a reply.
@@ -34,8 +34,8 @@ Rules:
 - Return a concise plain-text summary with no Markdown.
 - Return each referenced message as a structured item with its local ID, subject, and explanation.
 - Use only local IDs provided in the results.
-- If there are no results, return an empty messages list and say that no matching local classified messages were found.
-- Mention that /search only searches synchronized and classified local mail when useful.
+- If there are no results, return an empty messages list and say that no matching local triaged messages were found.
+- Mention that /search only searches synchronized and triaged local mail when useful.
 """
 
 
@@ -102,8 +102,8 @@ def fallback_output(
     if not results:
         return InboxSearchOutput(
             summary=(
-                "I did not find matching local classified messages. "
-                "Run classify first for best /search results."
+                "I did not find matching local triaged messages. "
+                "Run triage first for best /search results."
             )
         )
     return InboxSearchOutput(

@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 
 from email_agent.ai.chat_models import get_model
-from email_agent.ai.classifier import EmailClassifier
 from email_agent.ai.drafter import EmailDrafter
+from email_agent.ai.triager import EmailTriager
 from email_agent.config import AccountConfig, Settings
 from email_agent.db import initialize_database
 from email_agent.providers import MailProvider, create_mail_provider
@@ -21,15 +21,15 @@ class AccountRuntime:
     account_id: str
     account: AccountConfig
     provider: MailProvider
-    classifier: EmailClassifier | None
+    triager: EmailTriager | None
     drafter: EmailDrafter | None
     model: object | None
 
-    def require_classifier(self) -> EmailClassifier:
-        """Return the configured classifier when the runtime includes AI."""
-        if self.classifier is None:
-            raise RuntimeError("This workflow requires a configured classifier")
-        return self.classifier
+    def require_triager(self) -> EmailTriager:
+        """Return the configured triager when the runtime includes AI."""
+        if self.triager is None:
+            raise RuntimeError("This workflow requires a configured triager")
+        return self.triager
 
     def require_drafter(self) -> EmailDrafter:
         """Return the configured drafter when the runtime includes AI."""
@@ -50,12 +50,12 @@ class RuntimeFactory:
         account = self.settings.account(account_id)
         return self._build(account_id, account)
 
-    def for_classification(self, account_id: str) -> AccountRuntime:
-        """Build a runtime for classifying messages."""
+    def for_triage(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for triaging messages."""
         account = self.settings.account(account_id)
         model = get_model(account.model)
-        classifier = EmailClassifier(self.settings.root, account.agent, model)
-        return self._build(account_id, account, model=model, classifier=classifier)
+        triager = EmailTriager(self.settings.root, account.agent, model)
+        return self._build(account_id, account, model=model, triager=triager)
 
     def for_drafting(self, account_id: str) -> AccountRuntime:
         """Build a runtime for drafting replies."""
@@ -75,7 +75,7 @@ class RuntimeFactory:
         account: AccountConfig,
         *,
         model: object | None = None,
-        classifier: EmailClassifier | None = None,
+        triager: EmailTriager | None = None,
         drafter: EmailDrafter | None = None,
     ) -> AccountRuntime:
         logger.info("Loading account runtime for %s", account_id)
@@ -84,7 +84,7 @@ class RuntimeFactory:
             account_id=account_id,
             account=account,
             provider=create_mail_provider(account_id, account, self.settings.root),
-            classifier=classifier,
+            triager=triager,
             drafter=drafter,
             model=model,
         )
@@ -93,7 +93,7 @@ class RuntimeFactory:
             account.provider,
             account.model.model,
             {
-                "classifier": classifier is not None,
+                "triager": triager is not None,
                 "drafter": drafter is not None,
                 "model": model is not None,
             },

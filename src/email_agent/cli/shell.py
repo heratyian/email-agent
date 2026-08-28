@@ -10,12 +10,12 @@ import typer
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
-    render_classification_results,
     render_draft_list,
     render_inbox_items,
     render_inbox_search_response,
     render_message_details,
     render_review_item,
+    render_triage_results,
 )
 from email_agent.diagnostics import configure_model_tracing
 
@@ -134,7 +134,7 @@ class InteractiveShell:
         methods = {
             "/inbox": self._inbox,
             "/search": self._search,
-            "/classify": self._classify,
+            "/triage": self._triage,
             "/show": self._show,
             "/draft": self._draft,
             "/drafts": self._drafts,
@@ -186,17 +186,17 @@ class InteractiveShell:
         response = self.handlers.search_inbox(self._active(), " ".join(args))
         render_inbox_search_response(response)
 
-    def _classify(self, args: list[str]) -> None:
+    def _triage(self, args: list[str]) -> None:
         if len(args) > 1:
-            raise ShellUsageError("/classify [LOCAL_ID]")
+            raise ShellUsageError("/triage [LOCAL_ID]")
         try:
             message_id = int(args[0]) if args else None
         except ValueError as exc:
-            raise ShellUsageError("/classify [LOCAL_ID]") from exc
+            raise ShellUsageError("/triage [LOCAL_ID]") from exc
         if message_id is not None:
             self._require_active_message(message_id)
-        results = self.handlers.classify(self._active(), message_id=message_id)
-        render_classification_results(results)
+        results = self.handlers.triage(self._active(), message_id=message_id)
+        render_triage_results(results)
 
     @staticmethod
     def _one_id(args: list[str], usage: str) -> int:
@@ -311,8 +311,8 @@ class InteractiveShell:
 
 HELP_TEXT = """Commands:
   /inbox [limit]                 Synchronize and show recent mail
-  /search QUERY                  Search classified local mail with natural language
-  /classify [LOCAL_ID]           Classify unclassified mail (or one message)
+  /search QUERY                  Search triaged local mail with natural language
+  /triage [LOCAL_ID]           Triage untriaged mail (or one message)
   /show LOCAL_ID                 Show a message
   /draft LOCAL_ID [instruction]  Generate or regenerate a reply suggestion
   /drafts                        List pending suggestions

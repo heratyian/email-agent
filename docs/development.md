@@ -33,7 +33,7 @@ particular:
 Run the narrowest useful test while developing:
 
 ```bash
-uv run pytest tests/services/test_classification_inbox_and_routing.py
+uv run pytest tests/services/test_triage_inbox_and_routing.py
 uv run pytest tests/cli/test_shell.py
 ```
 
@@ -53,7 +53,7 @@ comments, and files.
 Update the Peewee models and `src/email_agent/db/schema.sql` together. Delete
 `data/email_agent.db` after a schema change so the application creates the current
 schema. The email provider remains the source of truth, but deleting the database
-also deletes local classifications and draft suggestions.
+also deletes local triages and draft suggestions.
 
 ## Documentation style
 
@@ -64,10 +64,10 @@ Treat CLI `--help` and shell `/help` as the current command reference.
 Documentation should use representative examples instead of copying every option
 and help string.
 
-## Classification evaluation
+## Triage evaluation
 
 Set `LANGSMITH_API_KEY` and `LANGSMITH_APPLICATION_TAG_VALUE_ID`, then run the
-checked-in synthetic classification dataset against the self-contained `personal`
+checked-in synthetic triage dataset against the self-contained `personal`
 evaluation profile:
 
 ```bash
@@ -79,7 +79,7 @@ script reads the `Application: email-agent` resource-tag value from the current
 LangSmith workspace.
 
 ```bash
-uv run email-agent evaluate classification --profile personal
+uv run email-agent evaluate triage --profile personal
 ```
 
 The command does not load `accounts.yaml`, connect to a mailbox, or initialize the
@@ -87,16 +87,16 @@ email database. The profile owns its model configuration, prompts, categories,
 and synthetic examples under
 `src/email_agent/evaluations/profiles/personal/`.
 
-The first run creates the `classification-personal` dataset in LangSmith and
+The first run creates the `triage-personal` dataset in LangSmith and
 assigns it to the configured application. Later runs reuse that dataset and create
 a new experiment. The evaluation reports exact-match scores for category, reply
 requirement, priority, and escalation requirement. Use a new dataset name after
 changing examples:
 
 ```bash
-uv run email-agent evaluate classification \
+uv run email-agent evaluate triage \
   --profile personal \
-  --dataset classification-personal-v2
+  --dataset triage-personal-v2
 ```
 
 Copy the complete profile directory to create another evaluation profile. Keep
@@ -128,7 +128,7 @@ uv run email-agent evaluate search --profile personal
 ```
 
 The command creates a temporary SQLite database and Chroma index, seeds the
-checked-in classified corpus, and runs each query through the production graph.
+checked-in triaged corpus, and runs each query through the production graph.
 It uses the profile's chat and embedding model, so it requires the model API key.
 The temporary data is deleted after the blocking evaluation completes.
 

@@ -2,11 +2,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-import email_agent.ai.classifier as classifier_module
 import email_agent.ai.drafter as drafter_module
-from email_agent.ai.classifier import EmailClassifier
+import email_agent.ai.triager as triager_module
 from email_agent.ai.drafter import EmailDrafter
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
+from email_agent.ai.triager import EmailTriager
 from email_agent.config import AgentConfig
 from email_agent.privacy import SensitiveDataError
 from email_agent.providers.models import EmailMessage, EmailThread
@@ -23,11 +23,11 @@ class RecordingAgent:
 
 
 def build_agents(tmp_path, monkeypatch):
-    classification_prompt = tmp_path / "classification.md"
-    classification_prompt.write_text("Escalate sensitive messages.")
+    triage_prompt = tmp_path / "triage.md"
+    triage_prompt.write_text("Escalate sensitive messages.")
     draft_prompt = tmp_path / "draft.md"
     draft_prompt.write_text("Write concise replies.")
-    classifier_agent = RecordingAgent(
+    triager_agent = RecordingAgent(
         {
             "category": "action",
             "requires_reply": True,
@@ -45,17 +45,17 @@ def build_agents(tmp_path, monkeypatch):
             "confidence": 0.8,
         }
     )
-    monkeypatch.setattr(classifier_module, "create_agent", lambda **kwargs: classifier_agent)
+    monkeypatch.setattr(triager_module, "create_agent", lambda **kwargs: triager_agent)
     monkeypatch.setattr(drafter_module, "create_agent", lambda **kwargs: drafter_agent)
     config = AgentConfig.model_validate(
         {
             "model": {"provider": "openai", "model": "test"},
-            "classification_prompt": "classification.md",
+            "triage_prompt": "triage.md",
             "draft_prompt": "draft.md",
             "categories": {"action": "Requires a response."},
         }
     )
-    return EmailClassifier(tmp_path, config, object()), EmailDrafter(
+    return EmailTriager(tmp_path, config, object()), EmailDrafter(
         tmp_path, config, object()
     )
 
@@ -78,7 +78,7 @@ def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
 ):
     _, drafter = build_agents(tmp_path, monkeypatch)
     source = source_message()
-    classification = ClassificationOutput(
+    triage = TriageOutput(
         category="action",
         requires_reply=True,
         priority="normal",
@@ -89,7 +89,7 @@ def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
     draft = drafter.draft(
         source,
         EmailThread(messages=[source]),
-        classification,
+        triage,
         instruction="Mention jordan@example.com.",
     )
 
@@ -105,10 +105,10 @@ def test_all_dynamic_draft_input_is_redacted_and_output_is_safely_restored(
 
 
 def test_credential_detection_stops_the_model_call(tmp_path, monkeypatch):
-    classifier, _ = build_agents(tmp_path, monkeypatch)
+    triager, _ = build_agents(tmp_path, monkeypatch)
     source = source_message("password: swordfish")
 
     with pytest.raises(SensitiveDataError, match="not sent"):
-        classifier.classify(source, EmailThread(messages=[source]))
+        triager.triage(source, EmailThread(messages=[source]))
 
-    assert classifier.model_agent.inputs == []
+    assert triager.model_agent.inputs == []

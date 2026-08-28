@@ -10,30 +10,30 @@ from langchain_core.documents import Document
 from langchain_core.tools import tool
 from peewee import JOIN
 
-from email_agent.db import Classification, Message
+from email_agent.db import Message, Triage
 from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResult
 
 logger = logging.getLogger(__name__)
 
 
-def summary_document_text(message: Message, classification: Classification) -> str:
-    """Return the PII-reduced text embedded for one classified message."""
+def summary_document_text(message: Message, triage: Triage) -> str:
+    """Return the PII-reduced text embedded for one triaged message."""
     return "\n".join(
         [
             f"Subject: {message.subject}",
-            f"Category: {classification.category or 'none'}",
-            f"Priority: {classification.priority}",
-            f"Requires reply: {classification.requires_reply}",
-            f"Requires escalation: {classification.requires_escalation}",
-            f"Summary: {classification.summary}",
+            f"Category: {triage.category or 'none'}",
+            f"Priority: {triage.priority}",
+            f"Requires reply: {triage.requires_reply}",
+            f"Requires escalation: {triage.requires_escalation}",
+            f"Summary: {triage.summary}",
         ]
     )
 
 
-def summary_document(message: Message, classification: Classification) -> Document:
-    """Build the searchable document for one classified message."""
+def summary_document(message: Message, triage: Triage) -> Document:
+    """Build the searchable document for one triaged message."""
     return Document(
-        page_content=summary_document_text(message, classification),
+        page_content=summary_document_text(message, triage),
         metadata={
             "message_id": message.id,
             "account_id": message.account_id,
@@ -41,94 +41,91 @@ def summary_document(message: Message, classification: Classification) -> Docume
             "from_name": message.from_name or "",
             "subject": message.subject,
             "received_at": message.received_at.isoformat(),
-            "category": classification.category or "",
-            "priority": classification.priority,
-            "requires_reply": classification.requires_reply,
-            "requires_escalation": classification.requires_escalation,
-            "summary": classification.summary,
+            "category": triage.category or "",
+            "priority": triage.priority,
+            "requires_reply": triage.requires_reply,
+            "requires_escalation": triage.requires_escalation,
+            "summary": triage.summary,
         },
     )
 
 
-def classified_messages(account_id: str, *, limit: int = 500) -> list[tuple[Message, Classification]]:
-    """Return recent classified messages for one account."""
+def triaged_messages(account_id: str, *, limit: int = 500) -> list[tuple[Message, Triage]]:
+    """Return recent triaged messages for one account."""
     rows = (
-        Message.select(Message, Classification)
-            .join(Classification, JOIN.INNER)
-            .where(
-                (Message.account_id == account_id)
-                & Message.classified_at.is_null(False)
-            )
+        Message.select(Message, Triage)
+            .join(Triage, JOIN.INNER)
+            .where(Message.account_id == account_id)
             .order_by(Message.received_at.desc())
             .limit(limit)
     )
-    return [(message, Classification.get(Classification.message == message)) for message in rows]
+    return [(message, Triage.get(Triage.message == message)) for message in rows]
 
 
 def result_from_message(
     message: Message,
-    classification: Classification,
+    triage: Triage,
     *,
     reason: str,
     score: float = 0,
 ) -> InboxSearchResult:
-    """Build a search result from persisted message and classification rows."""
+    """Build a search result from persisted message and triage rows."""
     return InboxSearchResult(
         message_id=message.id,
         from_address=message.from_address,
         from_name=message.from_name,
         subject=message.subject,
         received_at=message.received_at,
-        category=classification.category,
-        priority=classification.priority,
-        requires_reply=classification.requires_reply,
-        requires_escalation=classification.requires_escalation,
-        summary=classification.summary,
+        category=triage.category,
+        priority=triage.priority,
+        requires_reply=triage.requires_reply,
+        requires_escalation=triage.requires_escalation,
+        summary=triage.summary,
         reason=reason,
         score=score,
     )
 
 
-def search_classified_messages(
+def search_triaged_messages(
     account_id: str, plan: InboxSearchPlanOutput
 ) -> list[InboxSearchResult]:
-    """Search classified local messages with deterministic structured filters."""
+    """Search triaged local messages with deterministic structured filters."""
     cutoff = None
     if plan.recent_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=plan.recent_days)
     results = []
     sender = plan.sender.casefold() if plan.sender else None
     topic = plan.topic.casefold() if plan.topic else None
-    for message, classification in classified_messages(account_id):
+    for message, triage in triaged_messages(account_id):
         if cutoff and message.received_at < cutoff:
             continue
         if sender and sender not in f"{message.from_name or ''} {message.from_address}".casefold():
             continue
-        if plan.category and classification.category != plan.category:
+        if plan.category and triage.category != plan.category:
             continue
-        if plan.priority and classification.priority != plan.priority:
+        if plan.priority and triage.priority != plan.priority:
             continue
-        if plan.requires_reply is not None and bool(classification.requires_reply) != plan.requires_reply:
+        if plan.requires_reply is not None and bool(triage.requires_reply) != plan.requires_reply:
             continue
         if (
             plan.requires_escalation is not None
-            and bool(classification.requires_escalation) != plan.requires_escalation
+            and bool(triage.requires_escalation) != plan.requires_escalation
         ):
             continue
         score = 2.0
-        haystack = f"{message.subject} {classification.summary} {classification.intent or ''}".casefold()
+        haystack = f"{message.subject} {triage.summary} {triage.intent or ''}".casefold()
         if topic and any(term in haystack for term in topic.split()):
             score += 1.0
-        if classification.priority == "high":
+        if triage.priority == "high":
             score += 1.0
-        if classification.requires_escalation:
+        if triage.requires_escalation:
             score += 1.0
-        if classification.requires_reply:
+        if triage.requires_reply:
             score += 0.5
         results.append(
             result_from_message(
                 message,
-                classification,
+                triage,
                 reason="Matched structured inbox filters.",
                 score=score,
             )
@@ -143,7 +140,7 @@ def chroma_collection_name(account_id: str) -> str:
 
 
 def open_summary_vector_store(account_id: str, persist_directory: Path, embeddings) -> Chroma:
-    """Open the account's classification-summary collection."""
+    """Open the account's triage-summary collection."""
     return Chroma(
         collection_name=chroma_collection_name(account_id),
         embedding_function=embeddings,
@@ -152,10 +149,10 @@ def open_summary_vector_store(account_id: str, persist_directory: Path, embeddin
 
 
 def sync_summary_vector_store(account_id: str, persist_directory: Path, embeddings) -> Chroma:
-    """Synchronize changed classified-message summaries with Chroma."""
+    """Synchronize changed triaged-message summaries with Chroma."""
     documents_by_id = {
-        str(message.id): summary_document(message, classification)
-        for message, classification in classified_messages(account_id)
+        str(message.id): summary_document(message, triage)
+        for message, triage in triaged_messages(account_id)
     }
     store = open_summary_vector_store(account_id, persist_directory, embeddings)
     existing = store.get(include=["documents", "metadatas"])
@@ -211,7 +208,7 @@ def retrieve_similar_summaries(
     embeddings,
     limit: int = 8,
 ) -> list[InboxSearchResult]:
-    """Retrieve classified message summaries with Chroma vector search."""
+    """Retrieve triaged message summaries with Chroma vector search."""
     store = open_summary_vector_store(account_id, persist_directory, embeddings)
     documents = store.similarity_search_with_score(query, k=limit)
     results = []
@@ -229,7 +226,7 @@ def retrieve_similar_summaries(
                 requires_reply=bool(metadata["requires_reply"]),
                 requires_escalation=bool(metadata["requires_escalation"]),
                 summary=str(metadata["summary"]),
-                reason="Matched the vector search over classified message summaries.",
+                reason="Matched the vector search over triaged message summaries.",
                 score=max(0.0, 2.0 - float(distance)),
             )
         )
@@ -240,15 +237,15 @@ def make_search_tools(account_id: str, persist_directory: Path, embeddings):
     """Return read-only LangChain tools for inbox search."""
 
     @tool
-    def search_local_classified_messages(plan_json: str) -> str:
-        """Search local classified messages with structured inbox filters."""
+    def search_local_triaged_messages(plan_json: str) -> str:
+        """Search local triaged messages with structured inbox filters."""
         plan = InboxSearchPlanOutput.model_validate_json(plan_json)
-        results = search_classified_messages(account_id, plan)
+        results = search_triaged_messages(account_id, plan)
         return json.dumps([result.model_dump(mode="json") for result in results])
 
     @tool
-    def retrieve_classified_message_summaries(query: str, limit: int = 8) -> str:
-        """Retrieve local classified message summaries with Chroma vector search."""
+    def retrieve_triaged_message_summaries(query: str, limit: int = 8) -> str:
+        """Retrieve local triaged message summaries with Chroma vector search."""
         results = retrieve_similar_summaries(
             account_id,
             query,
@@ -258,4 +255,4 @@ def make_search_tools(account_id: str, persist_directory: Path, embeddings):
         )
         return json.dumps([result.model_dump(mode="json") for result in results])
 
-    return search_local_classified_messages, retrieve_classified_message_summaries
+    return search_local_triaged_messages, retrieve_triaged_message_summaries

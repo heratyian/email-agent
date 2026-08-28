@@ -27,7 +27,7 @@ class FakeHandlers:
             "_search",
             ["What's the most important message?"],
         ),
-        ("/classify 12", "_classify", ["12"]),
+        ("/triage 12", "_triage", ["12"]),
         ("/show 12", "_show", ["12"]),
         ("/draft 12 keep it short", "_draft", ["12", "keep", "it", "short"]),
         ("/drafts", "_drafts", []),

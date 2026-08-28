@@ -10,13 +10,13 @@ from typer.core import TyperGroup
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
-    render_classification_results,
     render_draft,
     render_draft_list,
     render_inbox_items,
     render_inbox_search_response,
     render_message_details,
     render_review_item,
+    render_triage_results,
 )
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.diagnostics import configure_model_tracing
@@ -187,8 +187,8 @@ def add_account(
     else:
         typer.echo("Set the generated username and password environment variables in .env.")
     typer.secho(
-        "Created classification prompt: "
-        f"{generated.classification_prompt.relative_to(PROJECT_ROOT)}"
+        "Created triage prompt: "
+        f"{generated.triage_prompt.relative_to(PROJECT_ROOT)}"
     )
     typer.secho(f"Created draft prompt: {generated.draft_prompt.relative_to(PROJECT_ROOT)}")
     typer.echo(f"\nNext: email-agent inbox --account {email}")
@@ -247,7 +247,7 @@ def search(
     query: Annotated[str, typer.Argument(help="Natural language inbox search request.")],
     account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
 ):
-    """Search synchronized and classified local mail using natural language."""
+    """Search synchronized and triaged local mail using natural language."""
     account_id = _account_id(account)
     try:
         response = CommandHandlers().search_inbox(account_id, query)
@@ -269,8 +269,8 @@ def demo():
     typer.echo(
         f"{mailbox_action} a Faker mailbox with {installation.message_count} messages."
     )
-    typer.echo("Classification, drafting, and search use the configured OpenAI model.")
-    typer.echo("Try /inbox, /classify, /search, /draft, /review, and /upload.\n")
+    typer.echo("Triage, drafting, and search use the configured OpenAI model.")
+    typer.echo("Try /inbox, /triage, /search, /draft, /review, and /upload.\n")
     run_shell(
         account_id=DEMO_ACCOUNT_ID,
         handlers=CommandHandlers(Settings(PROJECT_ROOT)),
@@ -278,39 +278,39 @@ def demo():
 
 
 @app.command()
-def classify(
+def triage(
     message_id: Annotated[
-        int | None, typer.Argument(help="Local message ID. Omit to classify all unclassified mail.")
+        int | None, typer.Argument(help="Local message ID. Omit to triage all untriaged mail.")
     ] = None,
     account: Annotated[str | None, typer.Option(help="Mailbox email address.")] = None,
 ):
-    """Classify messages and synchronize their managed mailbox labels."""
+    """Triage messages and synchronize their managed mailbox labels."""
     account_id = _account_id(account)
     try:
-        results = CommandHandlers().classify(
+        results = CommandHandlers().triage(
             account_id,
             message_id=message_id,
         )
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    render_classification_results(results)
+    render_triage_results(results)
 
 
-@evaluate_app.command("classification")
-def evaluate_classification(
+@evaluate_app.command("triage")
+def evaluate_triage(
     profile: Annotated[str, typer.Option(help="Checked-in evaluation profile.")] = "personal",
     dataset: Annotated[
         str | None, typer.Option(help="Override the LangSmith dataset name.")
     ] = None,
 ):
-    """Evaluate a self-contained classifier profile against synthetic email."""
-    from email_agent.evaluations import run_classification_evaluation
+    """Evaluate a self-contained triager profile against synthetic email."""
+    from email_agent.evaluations import run_triage_evaluation
 
     try:
-        run_classification_evaluation(profile, dataset_name=dataset)
+        run_triage_evaluation(profile, dataset_name=dataset)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    typer.secho("✓ Classification evaluation completed.", fg=typer.colors.GREEN, bold=True)
+    typer.secho("✓ Triage evaluation completed.", fg=typer.colors.GREEN, bold=True)
 
 
 @evaluate_app.command("drafting")

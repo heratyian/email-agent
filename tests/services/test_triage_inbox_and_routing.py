@@ -2,14 +2,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.config import AgentConfig
-from email_agent.db import CategorySync, Classification, Draft, Message, initialize_database
+from email_agent.db import CategorySync, Draft, Message, Triage, initialize_database
 from email_agent.providers.base import CategorySyncResult
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.services.category_routing import category_destination
-from email_agent.services.classification import ClassificationFailure, ClassificationService
 from email_agent.services.inbox import InboxService
+from email_agent.services.triage import TriageFailure, TriageService
 
 
 class FakeProvider:
@@ -38,11 +38,11 @@ class FakeProvider:
 
 class FakeAgents:
     def __init__(self):
-        self.classification_calls = 0
+        self.triage_calls = 0
 
-    def classify(self, message, thread):
-        self.classification_calls += 1
-        return ClassificationOutput(
+    def triage(self, message, thread):
+        self.triage_calls += 1
+        return TriageOutput(
             category="action",
             requires_reply=True,
             priority="normal",
@@ -67,13 +67,13 @@ def make_agent() -> AgentConfig:
     return AgentConfig.model_validate(
         {
             "model": {"provider": "openai", "model": "test-model"},
-            "classification_prompt": "prompts/test/classification.md",
+            "triage_prompt": "prompts/test/triage.md",
             "draft_prompt": "prompts/test/draft.md",
         }
     )
 
 
-def test_inbox_assigns_local_ids_without_classifying_or_changing_mailbox(tmp_path):
+def test_inbox_assigns_local_ids_without_triaging_or_changing_mailbox(tmp_path):
     message = make_message()
     initialize_database(tmp_path / "test.db")
     provider = FakeProvider(message)
@@ -81,7 +81,7 @@ def test_inbox_assigns_local_ids_without_classifying_or_changing_mailbox(tmp_pat
     items = InboxService(provider).list(unread_only=True)
 
     assert items[0].local_id > 0
-    assert items[0].classification is None
+    assert items[0].triage is None
     assert items[0].draft_ready is False
     assert Message.get_by_id(items[0].local_id).provider_message_id == "abc"
     assert Message.get_by_id(items[0].local_id).text_body == "I cannot log in"
@@ -96,52 +96,52 @@ def test_inbox_assigns_local_ids_without_classifying_or_changing_mailbox(tmp_pat
     assert Message.get_by_id(items[0].local_id).text_body == "Updated body"
 
 
-def test_inbox_displays_an_existing_classification_without_model_access(tmp_path):
+def test_inbox_displays_an_existing_triage_without_model_access(tmp_path):
     message = make_message()
     initialize_database(tmp_path / "test.db")
-    classification = FakeAgents().classify(message, EmailThread(messages=[message]))
+    triage = FakeAgents().triage(message, EmailThread(messages=[message]))
     stored = Message.upsert_email(message)
-    Classification.save_for(stored, classification)
+    Triage.save_for(stored, triage)
 
     item = InboxService(FakeProvider(message)).list()[0]
 
     assert item.local_id == stored.id
-    assert item.classification == classification
+    assert item.triage == triage
 
 
-def test_classification_saves_result_and_synchronizes_category_without_drafting(tmp_path):
+def test_triage_saves_result_and_synchronizes_category_without_drafting(tmp_path):
     message = make_message()
     initialize_database(tmp_path / "test.db")
     provider = FakeProvider(message)
     agents = FakeAgents()
-    service = ClassificationService(make_agent(), provider, agents)
+    service = TriageService(make_agent(), provider, agents)
     InboxService(provider).list()
     provider.message_queries.clear()
 
-    result = service.classify_unclassified(message.account_id)[0]
+    result = service.triage_pending(message.account_id)[0]
 
-    assert result.classification.intent == "login_problem"
+    assert result.triage.intent == "login_problem"
     assert Message.find_email(message.account_id, message.provider_id).id == result.local_id
     assert list(Draft.pending()) == []
     assert provider.synced == [("abc", "action")]
-    assert service.classify_unclassified(message.account_id) == []
-    assert agents.classification_calls == 1
+    assert service.triage_pending(message.account_id) == []
+    assert agents.triage_calls == 1
     assert provider.message_queries == []
 
 
-def test_classification_can_reclassify_one_local_message(tmp_path):
+def test_triage_can_retriage_one_local_message(tmp_path):
     message = make_message()
     initialize_database(tmp_path / "test.db")
     stored = Message.upsert_email(message)
-    service = ClassificationService(make_agent(), FakeProvider(message), FakeAgents())
+    service = TriageService(make_agent(), FakeProvider(message), FakeAgents())
 
-    result = service.classify_message(stored.id)
+    result = service.triage_message(stored.id)
 
     assert result.local_id == stored.id
-    assert Message.get_by_id(stored.id).classification_value().requires_reply is True
+    assert Message.get_by_id(stored.id).triage_value().requires_reply is True
 
 
-def test_classification_tracks_an_imap_move(tmp_path):
+def test_triage_tracks_an_imap_move(tmp_path):
     class MovingProvider(FakeProvider):
         def sync_category(self, message_id, destination, source_mailbox="INBOX", previous=None):
             return CategorySyncResult(provider_id="900", mailbox="action", source_moved=True)
@@ -150,7 +150,7 @@ def test_classification_tracks_an_imap_move(tmp_path):
     initialize_database(tmp_path / "test.db")
     provider = MovingProvider(message)
     InboxService(provider).list()
-    result = ClassificationService(make_agent(), provider, FakeAgents()).classify_unclassified(
+    result = TriageService(make_agent(), provider, FakeAgents()).triage_pending(
         message.account_id
     )[0]
 
@@ -160,7 +160,7 @@ def test_classification_tracks_an_imap_move(tmp_path):
     assert stored.provider_mailbox == "action"
 
 
-def test_classification_isolates_one_failure_from_the_batch(tmp_path):
+def test_triage_isolates_one_failure_from_the_batch(tmp_path):
     initialize_database(tmp_path / "test.db")
     first = make_message("fails")
     second = make_message("succeeds")
@@ -172,13 +172,13 @@ def test_classification_isolates_one_failure_from_the_batch(tmp_path):
 
     provider = MixedProvider([first, second])
     InboxService(provider).list()
-    results = ClassificationService(
+    results = TriageService(
         make_agent(), provider, FakeAgents()
-    ).classify_unclassified(first.account_id)
+    ).triage_pending(first.account_id)
 
     results_by_id = {result.message.provider_id: result for result in results}
-    assert isinstance(results_by_id["fails"], ClassificationFailure)
-    assert not isinstance(results_by_id["succeeds"], ClassificationFailure)
+    assert isinstance(results_by_id["fails"], TriageFailure)
+    assert not isinstance(results_by_id["succeeds"], TriageFailure)
 
 
 def test_failed_category_sync_remains_eligible_for_default_retry(tmp_path):
@@ -191,23 +191,30 @@ def test_failed_category_sync_remains_eligible_for_default_retry(tmp_path):
 
     failing_provider = FailingProvider(message)
     InboxService(failing_provider).list()
-    failed = ClassificationService(
-        make_agent(), failing_provider, FakeAgents()
-    ).classify_unclassified(message.account_id)
-    retried = ClassificationService(
-        make_agent(), FakeProvider(message), FakeAgents()
-    ).classify_unclassified(message.account_id)
+    first_agents = FakeAgents()
+    retry_agents = FakeAgents()
+    failed = TriageService(
+        make_agent(), failing_provider, first_agents
+    ).triage_pending(message.account_id)
+    assert Triage.get().category_sync_pending is True
+    retried = TriageService(
+        make_agent(), FakeProvider(message), retry_agents
+    ).triage_pending(message.account_id)
 
-    assert isinstance(failed[0], ClassificationFailure)
-    assert not isinstance(retried[0], ClassificationFailure)
+    assert isinstance(failed[0], TriageFailure)
+    assert failed[0].triage is not None
+    assert not isinstance(retried[0], TriageFailure)
+    assert first_agents.triage_calls == 1
+    assert retry_agents.triage_calls == 0
+    assert Triage.get().category_sync_pending is False
 
 
 def test_category_sync_audit_is_idempotent(tmp_path):
     message = make_message("categorized")
     initialize_database(tmp_path / "test.db")
     stored = Message.upsert_email(message)
-    Classification.save_for(
-        stored, FakeAgents().classify(message, EmailThread(messages=[]))
+    Triage.save_for(
+        stored, FakeAgents().triage(message, EmailThread(messages=[]))
     )
 
     assert CategorySync.is_active(stored.id, "Email Agent/Action") is False
@@ -217,7 +224,7 @@ def test_category_sync_audit_is_idempotent(tmp_path):
 
 
 def test_unconfigured_category_is_rejected_instead_of_implicitly_mapped():
-    classification = ClassificationOutput(
+    triage = TriageOutput(
         category="needs_reply",
         requires_reply=True,
         priority="normal",
@@ -225,7 +232,7 @@ def test_unconfigured_category_is_rejected_instead_of_implicitly_mapped():
         confidence=0.9,
     )
     with pytest.raises(KeyError, match="unknown category 'needs_reply'"):
-        category_destination(make_agent(), classification)
+        category_destination(make_agent(), triage)
 
 
 def test_existing_category_maps_to_unique_nested_destination():
@@ -234,22 +241,22 @@ def test_existing_category_maps_to_unique_nested_destination():
         "agent/action": "Requires my response.",
         "agent/travel": "Reservations and itinerary changes.",
     }
-    classification = ClassificationOutput(
+    triage = TriageOutput(
         category="action",
         requires_reply=True,
         priority="normal",
         summary="Question",
         confidence=0.9,
     )
-    assert category_destination(agent, classification) == "agent/action"
+    assert category_destination(agent, triage) == "agent/action"
 
 
 def test_uncategorized_message_has_no_provider_destination():
-    classification = ClassificationOutput(
+    triage = TriageOutput(
         category=None,
         requires_reply=False,
         priority="normal",
         summary="Does not fit the configured taxonomy",
         confidence=0.8,
     )
-    assert category_destination(make_agent(), classification) is None
+    assert category_destination(make_agent(), triage) is None

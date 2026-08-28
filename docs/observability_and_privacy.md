@@ -25,7 +25,7 @@ Use `--trace-model` to print the complete payload sent to the model and the
 structured response:
 
 ```bash
-uv run email-agent classify --account you@gmail.com --trace-model
+uv run email-agent triage --account you@gmail.com --trace-model
 ```
 
 This output can contain complete system prompts, email messages, thread history,

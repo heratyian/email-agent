@@ -1,9 +1,9 @@
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 
 
-def category_destination(account, classification: ClassificationOutput) -> str | None:
+def category_destination(account, triage: TriageOutput) -> str | None:
     """Return the provider-neutral label or folder for a configured category."""
-    key = classification.category
+    key = triage.category
     if key is None:
         return None
     if key not in account.categories:
@@ -15,5 +15,5 @@ def category_destination(account, classification: ClassificationOutput) -> str |
         if len(matches) == 1:
             key = matches[0]
     if key not in account.categories:
-        raise KeyError(f"unknown category {classification.category!r}")
+        raise KeyError(f"unknown category {triage.category!r}")
     return key

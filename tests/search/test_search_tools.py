@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.cli.commands.handlers import CommandHandlers
-from email_agent.db import Classification, Message, initialize_database
+from email_agent.db import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
 from email_agent.search.graph import build_search_response, ground_output, merge_results
 from email_agent.search.models import (
@@ -13,7 +13,7 @@ from email_agent.search.models import (
 )
 from email_agent.search.tools import (
     retrieve_similar_summaries,
-    search_classified_messages,
+    search_triaged_messages,
     summary_document,
     sync_summary_vector_store,
 )
@@ -31,9 +31,9 @@ def store_message(account_id, subject, summary, *, priority="normal", requires_r
             received_at=datetime.now(UTC) - timedelta(days=1),
         )
     )
-    Classification.save_for(
+    Triage.save_for(
         message,
-        ClassificationOutput(
+        TriageOutput(
             category="action",
             requires_reply=requires_reply,
             priority=priority,
@@ -42,12 +42,10 @@ def store_message(account_id, subject, summary, *, priority="normal", requires_r
             requires_escalation=False,
         ),
     )
-    message.classified_at = datetime.now(UTC)
-    message.save()
     return message
 
 
-def test_structured_search_filters_classified_messages(tmp_path):
+def test_structured_search_filters_triaged_messages(tmp_path):
     initialize_database(tmp_path / "email.db")
     store_message(
         "person@example.com",
@@ -57,7 +55,7 @@ def test_structured_search_filters_classified_messages(tmp_path):
     )
     store_message("person@example.com", "Newsletter", "A product newsletter.")
 
-    results = search_classified_messages(
+    results = search_triaged_messages(
         "person@example.com",
         InboxSearchPlanOutput(
             query="what needs reply",
@@ -166,10 +164,10 @@ def test_summary_vector_store_only_changes_outdated_documents(tmp_path, monkeypa
     unchanged_message = store_message("person@example.com", "Unchanged", "Same summary.")
     changed_message = store_message("person@example.com", "Changed", "New summary.")
     new_message = store_message("person@example.com", "New", "New document.")
-    unchanged_classification = Classification.get(
-        Classification.message == unchanged_message
+    unchanged_triage = Triage.get(
+        Triage.message == unchanged_message
     )
-    unchanged_document = summary_document(unchanged_message, unchanged_classification)
+    unchanged_document = summary_document(unchanged_message, unchanged_triage)
 
     class FakeChroma:
         def __init__(self, **kwargs):
@@ -235,28 +233,28 @@ def test_vector_retrieval_only_searches_the_existing_index(tmp_path, monkeypatch
     assert results == []
 
 
-def test_classify_synchronizes_the_summary_index_even_without_new_messages(
+def test_triage_synchronizes_the_summary_index_even_without_new_messages(
     tmp_path, monkeypatch
 ):
     runtime = SimpleNamespace(
         settings=SimpleNamespace(root=tmp_path),
         account=SimpleNamespace(agent=object(), model=object()),
         provider=object(),
-        require_classifier=lambda: object(),
+        require_triager=lambda: object(),
     )
-    runtime_factory = SimpleNamespace(for_classification=lambda account_id: runtime)
+    runtime_factory = SimpleNamespace(for_triage=lambda account_id: runtime)
 
-    class EmptyClassificationService:
-        def __init__(self, agent, provider, classifier):
+    class EmptyTriageService:
+        def __init__(self, agent, provider, triager):
             pass
 
-        def classify_unclassified(self, account_id):
+        def triage_pending(self, account_id):
             return []
 
     synchronized = []
     monkeypatch.setattr(
-        "email_agent.cli.commands.handlers.ClassificationService",
-        EmptyClassificationService,
+        "email_agent.cli.commands.handlers.TriageService",
+        EmptyTriageService,
     )
     monkeypatch.setattr(
         "email_agent.cli.commands.handlers.get_embedding_model",
@@ -270,7 +268,7 @@ def test_classify_synchronizes_the_summary_index_even_without_new_messages(
         settings=SimpleNamespace(root=tmp_path), runtime_factory=runtime_factory
     )
 
-    assert handlers.classify("person@example.com") == []
+    assert handlers.triage("person@example.com") == []
     assert synchronized == [
         ("person@example.com", tmp_path / "data" / "chroma", "embeddings")
     ]

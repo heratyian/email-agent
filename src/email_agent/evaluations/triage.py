@@ -13,7 +13,7 @@ import yaml
 from langsmith import Client
 
 from email_agent.ai.chat_models import get_model
-from email_agent.ai.classifier import EmailClassifier
+from email_agent.ai.triager import EmailTriager
 from email_agent.config import AgentConfig
 from email_agent.providers.models import EmailMessage, EmailThread
 
@@ -72,7 +72,7 @@ def load_profile(name: str) -> EvaluationProfile:
         raise ValueError(f"invalid evaluation profile name: {name!r}")
     root = PROFILES_ROOT / name
     config_path = root / "agent.yaml"
-    examples_path = root / "classification_examples.json"
+    examples_path = root / "triage_examples.json"
     if not config_path.is_file() or not examples_path.is_file():
         raise ValueError(f"unknown evaluation profile: {name!r}")
     agent = AgentConfig.model_validate(yaml.safe_load(config_path.read_text()))
@@ -82,7 +82,7 @@ def load_profile(name: str) -> EvaluationProfile:
 
 
 def validate_reference_categories(examples: list[dict], categories: dict[str, str]) -> None:
-    """Reject reference categories that the configured classifier cannot return."""
+    """Reject reference categories that the configured triager cannot return."""
     unknown = sorted(
         {
             example["outputs"]["category"]
@@ -98,10 +98,10 @@ def validate_reference_categories(examples: list[dict], categories: dict[str, st
         )
 
 
-def classification_target(classifier: EmailClassifier) -> Callable[[dict], dict]:
-    """Build a LangSmith target around the production classification operation."""
+def triage_target(triager: EmailTriager) -> Callable[[dict], dict]:
+    """Build a LangSmith target around the production triage operation."""
 
-    def classify(inputs: dict) -> dict:
+    def triage(inputs: dict) -> dict:
         message = EmailMessage(
             provider_id="evaluation",
             account_id="evaluation@example.com",
@@ -110,10 +110,10 @@ def classification_target(classifier: EmailClassifier) -> Callable[[dict], dict]
             text_body=inputs["text_body"],
             received_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        result = classifier.classify(message, EmailThread(messages=[message]))
+        result = triager.triage(message, EmailThread(messages=[message]))
         return result.model_dump()
 
-    return classify
+    return triage
 
 
 def ensure_dataset(
@@ -122,7 +122,7 @@ def ensure_dataset(
     examples: list[dict],
     *,
     application_tag_value_id: str | None = None,
-    description: str = "Synthetic email examples for classification regression testing.",
+    description: str = "Synthetic email examples for triage regression testing.",
 ) -> None:
     """Create a LangSmith dataset and seed it on its first use."""
     if client.has_dataset(dataset_name=name):
@@ -135,15 +135,15 @@ def ensure_dataset(
     client.create_examples(dataset_id=dataset.id, examples=examples)
 
 
-def run_classification_evaluation(
+def run_triage_evaluation(
     profile_name: str = "personal",
     *,
     dataset_name: str | None = None,
     client: Client | None = None,
 ):
-    """Run a self-contained classification profile as a LangSmith experiment."""
+    """Run a self-contained triage profile as a LangSmith experiment."""
     profile = load_profile(profile_name)
-    dataset_name = dataset_name or f"classification-{profile.name}"
+    dataset_name = dataset_name or f"triage-{profile.name}"
     client = client or Client()
     ensure_dataset(
         client,
@@ -151,19 +151,19 @@ def run_classification_evaluation(
         profile.examples,
         application_tag_value_id=os.getenv("LANGSMITH_APPLICATION_TAG_VALUE_ID"),
     )
-    classifier = EmailClassifier(
+    triager = EmailTriager(
         profile.root, profile.agent, get_model(profile.agent.model)
     )
     return client.evaluate(
-        classification_target(classifier),
+        triage_target(triager),
         data=dataset_name,
         evaluators=EVALUATORS,
-        experiment_prefix=f"classification-{profile.name}",
+        experiment_prefix=f"triage-{profile.name}",
         metadata={
             "evaluation_profile": profile.name,
             "model_provider": profile.agent.model.provider,
             "model": profile.agent.model.model,
-            "classification_prompt": profile.agent.classification_prompt,
+            "triage_prompt": profile.agent.triage_prompt,
             "categories": sorted(profile.agent.categories),
         },
     )

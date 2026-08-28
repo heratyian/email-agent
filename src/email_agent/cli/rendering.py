@@ -4,7 +4,7 @@ from wcwidth import wcswidth, wcwidth
 from email_agent.db import Draft
 from email_agent.providers.models import EmailMessage
 from email_agent.search.models import InboxSearchResponse
-from email_agent.services import ClassificationFailure
+from email_agent.services import TriageFailure
 from email_agent.services.messages import MessageDetails
 
 INBOX_COLUMNS = (
@@ -13,6 +13,7 @@ INBOX_COLUMNS = (
     ("FROM", 22),
     ("SUBJECT", 42),
     ("CATEGORY", 24),
+    ("TRIAGE", 9),
     ("REPLY?", 6),
     ("DRAFT?", 7),
 )
@@ -30,7 +31,7 @@ SEARCH_COLUMNS = (
 
 def category_name(category: str | None) -> str:
     """Render an optional category for human-facing CLI output."""
-    return category.replace("_", " ") if category else "Uncategorized"
+    return category.replace("_", " ") if category else ""
 
 
 def priority_color(priority: str) -> str:
@@ -49,7 +50,7 @@ def message_id(value: int, *, prefix: str = "") -> None:
 
 def _cell(value: object, width: int) -> str:
     """Fit one value into a stable terminal column."""
-    text = str(value or "—").replace("\n", " ").strip()
+    text = ("—" if value is None else str(value)).replace("\n", " ").strip()
     # Python counts Unicode code points, but terminals align by display cells.
     # Emoji and East Asian characters often occupy two cells, so len() misaligns later columns.
     if wcswidth(text) > width:
@@ -84,6 +85,7 @@ def inbox_table_row(
     sender: str,
     subject: str,
     category: str | None,
+    needs_triage: bool,
     requires_reply: bool | None,
     draft_ready: bool,
     color: str | None = None,
@@ -95,6 +97,7 @@ def inbox_table_row(
         sender,
         subject,
         category_name(category),
+        "PENDING" if needs_triage else "DONE",
         "YES" if requires_reply else "NO" if requires_reply is False else "—",
         "READY" if draft_ready else "—",
     )
@@ -110,17 +113,18 @@ def render_inbox_items(items) -> None:
     if items:
         inbox_table_header()
     for item in items:
-        classification = item.classification
-        priority = classification.priority if classification else "—"
+        triage = item.triage
+        priority = triage.priority if triage else "—"
         inbox_table_row(
             local_id=item.local_id,
             priority=priority,
             sender=item.message.from_name or item.message.from_address,
             subject=item.message.subject,
-            category=classification.category if classification else None,
-            requires_reply=classification.requires_reply if classification else None,
+            category=triage.category if triage else None,
+            needs_triage=triage is None,
+            requires_reply=triage.requires_reply if triage else None,
             draft_ready=item.draft_ready,
-            color=priority_color(priority) if classification else None,
+            color=priority_color(priority) if triage else None,
         )
 
 
@@ -150,22 +154,24 @@ def render_inbox_search_response(response: InboxSearchResponse) -> None:
         )
 
 
-def render_classification_results(results) -> int:
-    """Render classification successes and isolated failures."""
+def render_triage_results(results) -> int:
+    """Render triage successes and isolated failures."""
     if not results:
-        typer.echo("No unclassified messages.")
+        typer.echo("No untriaged messages.")
         return 0
     inbox_table_header()
     succeeded = 0
     for result in results:
-        if isinstance(result, ClassificationFailure):
+        if isinstance(result, TriageFailure):
+            triage = result.triage
             inbox_table_row(
                 local_id=result.local_id or "?",
-                priority="error",
+                priority=triage.priority if triage else "error",
                 sender=result.message.from_name or result.message.from_address,
                 subject=f"{result.message.subject}: {result.error}",
-                category=None,
-                requires_reply=None,
+                category=triage.category if triage else None,
+                needs_triage=triage is None,
+                requires_reply=triage.requires_reply if triage else None,
                 draft_ready=False,
                 color=typer.colors.RED,
             )
@@ -173,17 +179,18 @@ def render_classification_results(results) -> int:
         succeeded += 1
         inbox_table_row(
             local_id=result.local_id,
-            priority=result.classification.priority,
+            priority=result.triage.priority,
             sender=result.message.from_name or result.message.from_address,
             subject=result.message.subject,
-            category=result.classification.category,
-            requires_reply=result.classification.requires_reply,
+            category=result.triage.category,
+            needs_triage=False,
+            requires_reply=result.triage.requires_reply,
             draft_ready=result.draft_ready,
-            color=priority_color(result.classification.priority),
+            color=priority_color(result.triage.priority),
         )
     failures = len(results) - succeeded
     typer.secho(
-        f"Classified {succeeded} · {failures} failed",
+        f"Triaged {succeeded} · {failures} failed",
         fg=typer.colors.RED if failures else typer.colors.GREEN,
         bold=True,
     )
@@ -191,22 +198,22 @@ def render_classification_results(results) -> int:
 
 
 def render_message_details(details: MessageDetails, *, show_confidence: bool = True) -> None:
-    """Render a provider message and its typed classification."""
+    """Render a provider message and its typed triage."""
     message = details.message
     typer.echo(f"From: {message.from_name or message.from_address}")
     typer.echo(f"Subject: {message.subject}\n")
     typer.echo(message.content or "(No plain-text body)")
-    classification = details.classification
-    if classification is None:
+    triage = details.triage
+    if triage is None:
         return
-    typer.echo(f"\nCategory: {category_name(classification.category)}")
-    typer.echo(f"Priority: {classification.priority.upper()}")
+    typer.echo(f"\nCategory: {category_name(triage.category) or '(none)'}")
+    typer.echo(f"Priority: {triage.priority.upper()}")
     if show_confidence:
-        typer.echo(f"Confidence: {classification.confidence:.2f}")
-    typer.echo(f"Summary: {classification.summary}")
-    if classification.requires_escalation:
+        typer.echo(f"Confidence: {triage.confidence:.2f}")
+    typer.echo(f"Summary: {triage.summary}")
+    if triage.requires_escalation:
         typer.secho("\n⚠ Human attention required", fg=typer.colors.BRIGHT_RED, bold=True)
-        typer.echo(classification.escalation_reason or "Review required.")
+        typer.echo(triage.escalation_reason or "Review required.")
 
 
 def render_draft_list(drafts: list[Draft]) -> None:

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 
-from email_agent.ai.outputs import ClassificationOutput, DraftOutput
+from email_agent.ai.outputs import DraftOutput, TriageOutput
 from email_agent.config import Settings
-from email_agent.db import Classification, Draft, Message, database, initialize_database
+from email_agent.db import Draft, Message, Triage, database, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.services import AccountService, DraftService, MessageService
@@ -16,13 +16,13 @@ accounts:
   person@example.com:
     provider: gmail
     model: {provider: openai, model: test}
-    classification_prompt: prompts/person/classification.md
+    triage_prompt: prompts/person/triage.md
     draft_prompt: prompts/person/draft.md
 """
     )
     prompt_dir = root / "prompts/person"
     prompt_dir.mkdir(parents=True)
-    (prompt_dir / "classification.md").write_text("Escalate sensitive messages.")
+    (prompt_dir / "triage.md").write_text("Escalate sensitive messages.")
     (prompt_dir / "draft.md").write_text("Write concise replies.")
     return Settings(root)
 
@@ -37,8 +37,8 @@ def message() -> EmailMessage:
     )
 
 
-def classification() -> ClassificationOutput:
-    return ClassificationOutput(
+def triage() -> TriageOutput:
+    return TriageOutput(
         category="action",
         requires_reply=True,
         priority="normal",
@@ -52,7 +52,7 @@ def test_runtime_factory_initializes_account_dependencies_and_database(tmp_path)
 
     assert runtime.account_id == "person@example.com"
     assert runtime.account.email == "person@example.com"
-    assert runtime.classifier is None
+    assert runtime.triager is None
     assert runtime.drafter is None
     assert database.database == runtime.settings.database_path
 
@@ -67,7 +67,7 @@ def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
     initialize_database(settings.database_path)
     source = message()
     stored = Message.upsert_email(source)
-    Classification.save_for(stored, classification())
+    Triage.save_for(stored, triage())
     service = MessageService(settings)
 
     class Provider:
@@ -80,7 +80,7 @@ def test_message_service_retrieves_provider_message(tmp_path, monkeypatch):
     )
     details = service.show(stored.id)
     assert details.message.subject == "Question"
-    assert details.classification.category == "action"
+    assert details.triage.category == "action"
 
 
 def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, monkeypatch):
@@ -94,7 +94,7 @@ def test_draft_service_uploads_to_mailbox_and_removes_item_from_queue(tmp_path, 
         confidence=0.9,
     )
     stored = Message.upsert_email(source)
-    Classification.save_for(stored, classification())
+    Triage.save_for(stored, triage())
     Draft.replace_generated(stored, reply)
     settings = write_settings(tmp_path)
 
@@ -131,7 +131,7 @@ def test_draft_model_removes_suggestion_from_review_queue(tmp_path):
     initialize_database(tmp_path / "email-agent.db")
     source = message()
     stored = Message.upsert_email(source)
-    Classification.save_for(stored, classification())
+    Triage.save_for(stored, triage())
     Draft.replace_generated(
         stored,
         DraftOutput(
@@ -153,7 +153,7 @@ def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
     initialize_database(tmp_path / "email-agent.db")
     source = message()
     stored = Message.upsert_email(source)
-    Classification.save_for(stored, classification())
+    Triage.save_for(stored, triage())
 
     class Provider:
         def get_message(self, provider_id, mailbox):
@@ -165,7 +165,7 @@ def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):
     class Agents:
         calls = 0
 
-        def draft(self, message, thread, stored_classification):
+        def draft(self, message, thread, stored_triage):
             self.calls += 1
             return DraftOutput(
                 recipient=message.from_address,

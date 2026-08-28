@@ -11,8 +11,8 @@ from pydantic import BaseModel
 
 from email_agent.ai.chat_models import get_model
 from email_agent.ai.drafter import EmailDrafter
-from email_agent.ai.outputs import ClassificationOutput
-from email_agent.evaluations.classification import ensure_dataset, load_examples, load_profile
+from email_agent.ai.outputs import TriageOutput
+from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
 from email_agent.providers.models import EmailMessage, EmailThread
 
 
@@ -72,11 +72,11 @@ def drafting_target(drafter: EmailDrafter) -> Callable[[dict], dict]:
                 for index, thread_message in enumerate(inputs.get("thread", []))
             ]
         )
-        classification = ClassificationOutput.model_validate(inputs["classification"])
+        triage = TriageOutput.model_validate(inputs["triage"])
         result = drafter.draft(
             message,
             thread,
-            classification,
+            triage,
             instruction=inputs.get("instruction"),
         )
         return result.model_dump()

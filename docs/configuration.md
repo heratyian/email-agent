@@ -15,7 +15,7 @@ uv run email-agent account add you@gmail.com \
 ```
 
 The generator creates or updates `accounts.yaml` and creates editable
-classification and drafting prompts under `prompts/`. Both locations are ignored
+triage and drafting prompts under `prompts/`. Both locations are ignored
 by Git.
 
 Validate configuration before connecting to a provider:
@@ -31,7 +31,7 @@ Every account defines:
 - `provider`: `gmail` or `imap`. The `demo` command owns the reserved synthetic
   `demo` provider configuration.
 - `model`: the model provider, model name, temperature, and optional base URL.
-- `classification_prompt`: account-specific classification and escalation guidance.
+- `triage_prompt`: account-specific triage and escalation guidance.
 - `draft_prompt`: account-specific tone, style, and drafting guidance.
 - `categories`: category names and descriptions.
 
@@ -69,7 +69,7 @@ source message from the provider.
 ## Prompts
 
 The application always supplies its safety rules and task instructions. The
-classification prompt adds account-specific classification and escalation
+triage prompt adds account-specific triage and escalation
 guidance. The draft prompt adds account-specific tone, style, and reply guidance.
 
 Category descriptions belong in `accounts.yaml`; do not duplicate the category

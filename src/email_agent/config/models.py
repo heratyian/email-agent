@@ -31,7 +31,7 @@ class AgentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: ModelConfig
-    classification_prompt: str
+    triage_prompt: str
     draft_prompt: str | None = None
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
@@ -70,7 +70,7 @@ class AccountConfig(BaseModel):
     imap_port: int = 993
     category_action: Literal["copy", "move"] | None = None
     model: ModelConfig
-    classification_prompt: str
+    triage_prompt: str
     draft_prompt: str
     categories: dict[str, str] = Field(default_factory=_default_categories)
 
@@ -81,10 +81,10 @@ class AccountConfig(BaseModel):
 
     @property
     def agent(self) -> AgentConfig:
-        """Return the internal agent view used by classification and drafting."""
+        """Return the internal agent view used by triage and drafting."""
         return AgentConfig(
             model=self.model,
-            classification_prompt=self.classification_prompt,
+            triage_prompt=self.triage_prompt,
             draft_prompt=self.draft_prompt,
             categories=self.categories,
         )

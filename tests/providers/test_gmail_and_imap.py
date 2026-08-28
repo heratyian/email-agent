@@ -21,7 +21,7 @@ def account(provider: str, **values) -> AccountConfig:
             "provider": provider,
             "email": "person@example.com",
             "model": {"provider": "openai", "model": "test-model"},
-            "classification_prompt": "prompts/test/classification.md",
+            "triage_prompt": "prompts/test/triage.md",
             "draft_prompt": "prompts/test/draft.md",
             **values,
         }

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from peewee import AutoField, DateTimeField, TextField
+from peewee import JOIN, AutoField, DateTimeField, TextField
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.db.models.base import BaseModel
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.models import EmailMessage
@@ -22,7 +22,6 @@ class Message(BaseModel):
     received_at = DateTimeField()
     provider_mailbox = TextField(default="INBOX")
     provider_uid = TextField()
-    classified_at = DateTimeField(null=True)
 
     class Meta:
         table_name = "messages"
@@ -67,11 +66,14 @@ class Message(BaseModel):
         )
 
     @classmethod
-    def unclassified(cls, account_id: str) -> list[Message]:
-        """Return every stored message awaiting completed classification."""
+    def untriaged(cls, account_id: str) -> list[Message]:
+        """Return stored messages that do not have a triage row."""
+        from email_agent.db.models.triage import Triage
+
         return list(
             cls.select()
-            .where((cls.account_id == account_id) & cls.classified_at.is_null())
+            .join(Triage, join_type=JOIN.LEFT_OUTER)
+            .where((cls.account_id == account_id) & Triage.id.is_null())
             .order_by(cls.received_at.desc())
         )
 
@@ -91,23 +93,38 @@ class Message(BaseModel):
 
     @classmethod
     def organization_candidates(cls, account_id: str, limit: int) -> list[Message]:
-        """Return recent classified messages eligible for category synchronization."""
-        from email_agent.db.models.classification import Classification
+        """Return recent triaged messages eligible for category synchronization."""
+        from email_agent.db.models.triage import Triage
 
         return list(
             cls.select()
-            .join(Classification)
+            .join(Triage)
             .where(cls.account_id == account_id)
             .order_by(cls.received_at.desc())
             .limit(limit)
         )
 
-    def classification_value(self) -> ClassificationOutput | None:
-        """Return this message's classification as the AI-facing value object."""
-        from email_agent.db.models.classification import Classification
+    @classmethod
+    def pending_category_syncs(cls, account_id: str, limit: int = 500) -> list[Message]:
+        """Return triaged messages awaiting provider category synchronization."""
+        from email_agent.db.models.triage import Triage
 
-        classification = Classification.get_or_none(Classification.message == self)
-        return classification.to_ai() if classification else None
+        return list(
+            cls.select()
+            .join(Triage)
+            .where(
+                (cls.account_id == account_id) & Triage.category_sync_pending
+            )
+            .order_by(cls.received_at.desc())
+            .limit(limit)
+        )
+
+    def triage_value(self) -> TriageOutput | None:
+        """Return this message's triage as the AI-facing value object."""
+        from email_agent.db.models.triage import Triage
+
+        triage = Triage.get_or_none(Triage.message == self)
+        return triage.to_ai() if triage else None
 
     def current_category_sync(self) -> CategorySyncState | None:
         """Return the active provider category state for this message."""

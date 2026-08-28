@@ -24,9 +24,9 @@ def test_generates_flat_account_with_separate_prompts(tmp_path, template):
     assert "email" not in account
     assert "agent" not in account
     assert account["model"]["model"] == "test-model"
-    assert account["classification_prompt"].endswith("/classification.md")
+    assert account["triage_prompt"].endswith("/triage.md")
     assert account["draft_prompt"].endswith("/draft.md")
-    assert result.classification_prompt.is_file()
+    assert result.triage_prompt.is_file()
     assert result.draft_prompt.is_file()
 
 

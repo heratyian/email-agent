@@ -42,9 +42,9 @@ class DraftService:
         message_row = Message.get_or_none(Message.id == message_id)
         if not message_row:
             raise LookupError("message not found")
-        classification = message_row.classification_value()
-        if classification is None:
-            raise LookupError("message has not been classified")
+        triage = message_row.triage_value()
+        if triage is None:
+            raise LookupError("message has not been triaged")
         source = provider.get_message(
             message_row.provider_uid, message_row.provider_mailbox
         )
@@ -52,9 +52,9 @@ class DraftService:
             message_row.provider_uid, message_row.provider_mailbox
         )
         if instruction:
-            reply = drafter.draft(source, thread, classification, instruction=instruction)
+            reply = drafter.draft(source, thread, triage, instruction=instruction)
         else:
-            reply = drafter.draft(source, thread, classification)
+            reply = drafter.draft(source, thread, triage)
         draft = Draft.replace_generated(message_row, reply)
         logger.info("Generated draft suggestion for local message %s", message_id)
         return draft

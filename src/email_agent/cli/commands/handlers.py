@@ -13,14 +13,14 @@ from email_agent.search.models import InboxSearchResponse
 from email_agent.search.tools import sync_summary_vector_store
 from email_agent.services import (
     AccountService,
-    ClassificationFailure,
-    ClassificationService,
-    ClassifiedEmail,
     DraftService,
     InboxItem,
     InboxService,
     MessageDetails,
     MessageService,
+    TriagedEmail,
+    TriageFailure,
+    TriageService,
 )
 
 
@@ -107,7 +107,7 @@ class CommandHandlers:
         return InboxResult(runtime, items)
 
     def search_inbox(self, account_id: str, query: str) -> InboxSearchResponse:
-        """Search classified local email with a natural language query."""
+        """Search triaged local email with a natural language query."""
         runtime = self.runtime_factory.for_search(account_id)
         if runtime.model is None:
             raise RuntimeError("This workflow requires a configured model")
@@ -118,24 +118,24 @@ class CommandHandlers:
             runtime.model,
         ).search(query)
 
-    def classify(
+    def triage(
         self,
         account_id: str,
         *,
         message_id: int | None = None,
-    ) -> list[ClassifiedEmail | ClassificationFailure]:
-        runtime = self.runtime_factory.for_classification(account_id)
-        service = ClassificationService(
+    ) -> list[TriagedEmail | TriageFailure]:
+        runtime = self.runtime_factory.for_triage(account_id)
+        service = TriageService(
             runtime.account.agent,
             runtime.provider,
-            runtime.require_classifier(),
+            runtime.require_triager(),
         )
         if message_id is not None:
             if self.message_account(message_id) != account_id:
                 raise LookupError(f"message {message_id} does not belong to account {account_id}")
-            results = [service.classify_message(message_id)]
+            results = [service.triage_message(message_id)]
         else:
-            results = service.classify_unclassified(account_id)
+            results = service.triage_pending(account_id)
         sync_summary_vector_store(
             account_id,
             runtime.settings.root / "data" / "chroma",

@@ -11,9 +11,9 @@ from langsmith import Client
 
 from email_agent.ai.chat_models import get_model
 from email_agent.ai.embeddings import get_embedding_model
-from email_agent.ai.outputs import ClassificationOutput
-from email_agent.db import Classification, Message, initialize_database
-from email_agent.evaluations.classification import ensure_dataset, load_examples, load_profile
+from email_agent.ai.outputs import TriageOutput
+from email_agent.db import Message, Triage, initialize_database
+from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
 from email_agent.providers.models import EmailMessage
 from email_agent.search.graph import build_inbox_search_graph
 from email_agent.search.tools import make_search_tools, sync_summary_vector_store
@@ -22,7 +22,7 @@ EVALUATION_ACCOUNT_ID = "search-evaluation@example.test"
 
 
 def seed_search_corpus(path: Path, account_id: str = EVALUATION_ACCOUNT_ID) -> dict[int, str]:
-    """Store a checked-in classified corpus and return local IDs mapped to stable keys."""
+    """Store a checked-in triaged corpus and return local IDs mapped to stable keys."""
     corpus = load_examples(path)
     now = datetime.now(UTC)
     keys_by_id = {}
@@ -39,12 +39,10 @@ def seed_search_corpus(path: Path, account_id: str = EVALUATION_ACCOUNT_ID) -> d
                 received_at=now - timedelta(days=values["received_days_ago"]),
             )
         )
-        Classification.save_for(
+        Triage.save_for(
             message,
-            ClassificationOutput.model_validate(entry["classification"]),
+            TriageOutput.model_validate(entry["triage"]),
         )
-        message.classified_at = now
-        message.save()
         keys_by_id[message.id] = entry["key"]
     return keys_by_id
 
@@ -154,7 +152,7 @@ def search_metadata(profile) -> dict[str, Any]:
         "model_provider": profile.agent.model.provider,
         "model": profile.agent.model.model,
         "graph": "parallel-structured-vector-search-v1",
-        "retrieval": "chroma-classification-summaries-v1",
+        "retrieval": "chroma-triage-summaries-v1",
         "corpus": "search-corpus-v1",
     }
 

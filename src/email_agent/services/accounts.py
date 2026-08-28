@@ -25,7 +25,7 @@ class AccountService:
         settings = Settings(self.root)
         logger.info("Validating %d configured account(s)", len(settings.accounts))
         for account in settings.accounts.values():
-            for prompt_path in (account.classification_prompt, account.draft_prompt):
+            for prompt_path in (account.triage_prompt, account.draft_prompt):
                 prompt = settings.root / prompt_path
                 logger.debug("Checking prompt path: %s", prompt)
                 if not prompt.is_file():
@@ -37,6 +37,6 @@ class AccountService:
         logger.info("Generating account configuration")
         generated = generate_account(self.root, *args, **kwargs)
         logger.info("Created account configuration for %s", generated.account_id)
-        logger.debug("Generated classification prompt: %s", generated.classification_prompt)
+        logger.debug("Generated triage prompt: %s", generated.triage_prompt)
         logger.debug("Generated draft prompt: %s", generated.draft_prompt)
         return generated

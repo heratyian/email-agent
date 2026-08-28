@@ -48,13 +48,13 @@ def test_model_tracing_is_explicit_and_emits_warning(capsys):
 def test_model_trace_logs_exact_payload_only_when_enabled(capsys):
     configure_logging(0)
     configure_model_tracing(False)
-    trace_payload("classification", "system secret", "email secret")
+    trace_payload("triage", "system secret", "email secret")
     assert "email secret" not in capsys.readouterr().err
 
     configure_model_tracing(True)
     warn_model_tracing()
     capsys.readouterr()
-    trace_payload("classification", "system secret", "email secret")
+    trace_payload("triage", "system secret", "email secret")
     output = capsys.readouterr().err
     assert "system secret" in output
     assert "email secret" in output

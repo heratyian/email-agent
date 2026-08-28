@@ -31,7 +31,7 @@ def test_top_level_help_presents_the_user_workflows():
         for command in (
             "inbox",
             "search",
-            "classify",
+            "triage",
             "drafts",
             "message",
             "account",
@@ -86,7 +86,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["inbox"],
         ["search"],
         ["demo"],
-        ["classify"],
+        ["triage"],
         ["drafts"],
         ["drafts", "show"],
         ["drafts", "generate"],
@@ -99,7 +99,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["account", "add"],
         ["account", "validate"],
         ["evaluate"],
-        ["evaluate", "classification"],
+        ["evaluate", "triage"],
         ["evaluate", "drafting"],
         ["evaluate", "search"],
     ],
@@ -188,12 +188,12 @@ def test_demo_inbox_reads_a_stable_newest_first_synthetic_mailbox(tmp_path, monk
     )
 
 
-def test_classify_help_describes_stored_unclassified_messages():
-    result = runner.invoke(app, ["classify", "--help"])
+def test_triage_help_describes_stored_untriaged_messages():
+    result = runner.invoke(app, ["triage", "--help"])
 
     assert result.exit_code == 0
     assert "--all" not in result.output
-    assert "unclassified" in result.output
+    assert "untriaged" in result.output
     assert "managed mailbox labels" in result.output
 
 
@@ -201,7 +201,7 @@ def test_nested_commands_are_discoverable():
     expectations = {
         "account": ("add", "validate"),
         "drafts": ("show", "generate", "review", "upload", "delete"),
-        "evaluate": ("classification", "drafting", "search"),
+        "evaluate": ("triage", "drafting", "search"),
         "message": ("show",),
     }
     for group, commands in expectations.items():

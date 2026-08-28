@@ -32,7 +32,7 @@ Type `/help` in the shell for the current command reference.
 
 ```text
 /inbox [limit]
-/classify [LOCAL_ID]
+/triage [LOCAL_ID]
 /show LOCAL_ID
 /draft LOCAL_ID [instruction]
 /drafts
@@ -56,27 +56,27 @@ or prepare replies. Pass a positive limit to change the default batch size:
 > /inbox 10
 ```
 
-### Classify messages
+### Triage messages
 
-`/classify` classifies all stored messages that do not have a completed
-classification. Run `/inbox` first to synchronize recent messages. Classification
+`/triage` processes all stored messages that do not have completed
+triage. Run `/inbox` first to synchronize recent messages. Triage
 saves category, priority, and reply requirements, then synchronizes the configured
 Gmail label or IMAP category folder:
 
 ```text
-> /classify
+> /triage
 ```
 
-Pass a local ID to classify or reclassify one message:
+Pass a local ID to triage or retriage one message:
 
 ```text
-> /classify 203
+> /triage 203
 ```
 
 ### Show a message
 
 `/show LOCAL_ID` retrieves the original message from its provider and displays
-its stored classification:
+its stored triage:
 
 ```text
 > /show 203
@@ -88,7 +88,7 @@ does not belong to the active account.
 ### Generate a draft suggestion
 
 `/draft LOCAL_ID` generates or regenerates a pending local suggestion from an
-existing classification. Add one-time guidance after the ID:
+existing triage. Add one-time guidance after the ID:
 
 ```text
 > /draft 203 Politely decline and keep the reply under 50 words.

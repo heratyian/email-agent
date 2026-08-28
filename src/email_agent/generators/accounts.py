@@ -46,7 +46,7 @@ class GeneratedAccount:
 
     path: Path
     account_id: str
-    classification_prompt: Path
+    triage_prompt: Path
     draft_prompt: Path
 
 
@@ -82,7 +82,7 @@ def generate_account(
     path = root / "accounts.yaml"
     slug = _slug(email)
     prompt_dir = root / "prompts" / slug
-    classification_prompt = prompt_dir / "classification.md"
+    triage_prompt = prompt_dir / "triage.md"
     draft_prompt = prompt_dir / "draft.md"
 
     raw = yaml.safe_load(path.read_text()) if path.is_file() else None
@@ -92,7 +92,7 @@ def generate_account(
         raise TypeError("accounts.yaml must contain an 'accounts' mapping")
     if email in raw["accounts"] and not force:
         raise FileExistsError(f"Account '{email}' already exists in accounts.yaml")
-    for prompt in (classification_prompt, draft_prompt):
+    for prompt in (triage_prompt, draft_prompt):
         if prompt.exists() and not force:
             raise FileExistsError(
                 f"Refusing to overwrite existing file: {prompt.relative_to(root)}"
@@ -138,14 +138,14 @@ def generate_account(
 
     raw["accounts"][email] = account
     prompt_dir.mkdir(parents=True, exist_ok=True)
-    classification_prompt.write_text(
-        template_root.joinpath("classification.md").read_text()
+    triage_prompt.write_text(
+        template_root.joinpath("triage.md").read_text()
     )
     draft_prompt.write_text(template_root.joinpath("draft.md").read_text())
     path.write_text(yaml.safe_dump(raw, sort_keys=False))
     return GeneratedAccount(
         path=path,
         account_id=email,
-        classification_prompt=classification_prompt,
+        triage_prompt=triage_prompt,
         draft_prompt=draft_prompt,
     )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.db import Draft, Message
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
@@ -17,7 +17,7 @@ class InboxItem:
 
     local_id: int
     message: EmailMessage
-    classification: ClassificationOutput | None
+    triage: TriageOutput | None
     draft_ready: bool
 
 
@@ -44,7 +44,7 @@ class InboxService:
                 InboxItem(
                     local_id=stored.id,
                     message=message,
-                    classification=stored.classification_value(),
+                    triage=stored.triage_value(),
                     draft_ready=Draft.has_reviewable(stored.id),
                 )
             )

@@ -106,7 +106,7 @@ def _install_account(root: Path) -> bool:
 
     prompt_root = root / DEMO_PROMPT_DIRECTORY
     prompt_root.mkdir(parents=True, exist_ok=True)
-    (prompt_root / "classification.md").write_text(
+    (prompt_root / "triage.md").write_text(
         "Prioritize security alerts, deadlines, and messages that require a response. "
         "Treat receipts and newsletters as low-risk unless their content indicates otherwise."
     )
@@ -118,7 +118,7 @@ def _install_account(root: Path) -> bool:
     raw["accounts"][DEMO_ACCOUNT_ID] = {
         "provider": "demo",
         "model": {"provider": "openai", "model": "gpt-5.4-mini"},
-        "classification_prompt": f"{DEMO_PROMPT_DIRECTORY}/classification.md",
+        "triage_prompt": f"{DEMO_PROMPT_DIRECTORY}/triage.md",
         "draft_prompt": f"{DEMO_PROMPT_DIRECTORY}/draft.md",
     }
     accounts_path.write_text(yaml.safe_dump(raw, sort_keys=False))

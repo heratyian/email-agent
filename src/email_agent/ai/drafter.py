@@ -6,7 +6,7 @@ from time import perf_counter
 
 from langchain.agents import create_agent
 
-from email_agent.ai.outputs import ClassificationOutput, DraftOutput
+from email_agent.ai.outputs import DraftOutput, TriageOutput
 from email_agent.ai.prompts import draft_system_prompt, format_thread
 from email_agent.ai.tracing import trace_payload, trace_response
 from email_agent.config import AgentConfig
@@ -33,12 +33,12 @@ class EmailDrafter:
         self,
         message: EmailMessage,
         thread: EmailThread,
-        classification: ClassificationOutput,
+        triage: TriageOutput,
         instruction: str | None = None,
     ) -> DraftOutput:
-        """Draft one suggested reply using classification and thread context."""
+        """Draft one suggested reply using triage and thread context."""
         content = (
-            f"Classification:\n{classification.model_dump_json(indent=2)}\n\n"
+            f"Triage:\n{triage.model_dump_json(indent=2)}\n\n"
             f"Conversation:\n{format_thread(thread, message)}"
         )
         if instruction:
@@ -82,6 +82,6 @@ class EmailDrafter:
                 ),
             }
         )
-        draft.requires_escalation |= classification.requires_escalation
-        draft.escalation_reason = draft.escalation_reason or classification.escalation_reason
+        draft.requires_escalation |= triage.requires_escalation
+        draft.escalation_reason = draft.escalation_reason or triage.escalation_reason
         return draft

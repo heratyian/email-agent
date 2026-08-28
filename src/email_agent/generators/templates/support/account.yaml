@@ -2,7 +2,7 @@ model:
   provider: "{{MODEL_PROVIDER}}"
   model: "{{MODEL_NAME}}"
   temperature: 0
-classification_prompt: "{{PROMPT_DIR}}/classification.md"
+triage_prompt: "{{PROMPT_DIR}}/triage.md"
 draft_prompt: "{{PROMPT_DIR}}/draft.md"
 categories:
   action: A customer request that needs a reply or team action.

@@ -15,7 +15,7 @@ same application services and persistence layer.
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
 
 `RuntimeFactory` provides workflow-specific constructors for inbox,
-classification, drafting, and search runtimes. Each runtime includes only the
+triage, drafting, and search runtimes. Each runtime includes only the
 configured dependencies needed for that workflow. Services do not import CLI
 code.
 
@@ -35,21 +35,22 @@ provider object, database handle, credential, or write-capable tool.
 
 ## Message workflow
 
-Inbox synchronization, classification, and drafting are separate operations:
+Inbox synchronization, triage, and drafting are separate operations:
 
 1. `inbox` fetches recent provider messages, assigns stable local IDs, and shows
-   any existing classification or draft state. It does not invoke a model.
-2. `classify` classifies unclassified messages with validated structured output,
+   any existing triage or draft state. It does not invoke a model.
+2. `triage` processes untriaged messages with validated structured output,
    saves each result, synchronizes the configured provider category, and updates
-   the account's classification-summary vector index.
-3. `draft` generates a pending local suggestion for one classified message.
+   the account's triage-summary vector index.
+3. `draft` generates a pending local suggestion for one triaged message.
 4. Draft upload creates a provider draft only after an explicit command.
 
-Classification is completed locally only after provider synchronization succeeds.
-A failed message remains eligible for a later run. Other messages in the same
-batch continue processing.
+The one-to-one triage row is the source of truth that model triage completed.
+Provider category synchronization has separate pending state on that row. A
+failed provider update is retried by a later `triage` run without invoking the
+model again. Other messages in the same batch continue processing.
 
-Classification is idempotent at the account and provider-message boundary. Draft
+Triage is idempotent at the account and provider-message boundary. Draft
 generation is always explicit and may replace only a pending local suggestion.
 The read-only `search` workflow searches the vector index but never writes to it.
 
@@ -79,8 +80,8 @@ location. Runtime construction always begins with a validated account key.
 
 Models perform two bounded tasks:
 
-- Classify one message and its thread.
-- Draft one suggested reply from a classification and thread.
+- Triage one message and its thread.
+- Draft one suggested reply from a triage and thread.
 
 Both tasks use validated structured output and no tools. Python owns provider
 calls, loops, retries, persistence, category changes, and draft upload.
@@ -88,10 +89,10 @@ calls, loops, retries, persistence, category changes, and draft upload.
 ## Storage
 
 SQLite stores synchronized plain-text message bodies, message metadata,
-classifications, draft suggestions, category synchronization state, and processing
+triages, draft suggestions, category synchronization state, and processing
 runs. The database is a disposable local cache. After a schema change, delete
 `data/email_agent.db` and run `inbox` to synchronize messages again. Deleting the
-database also deletes local classifications and draft suggestions.
+database also deletes local triages and draft suggestions.
 
 ## Diagnostic data
 

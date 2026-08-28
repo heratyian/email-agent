@@ -1,4 +1,4 @@
-"""Natural language search over classified local email."""
+"""Natural language search over triaged local email."""
 
 from email_agent.search.service import InboxSearchService
 

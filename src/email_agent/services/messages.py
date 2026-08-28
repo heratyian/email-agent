@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.config import Settings
 from email_agent.db import Message
 from email_agent.providers import create_mail_provider
@@ -17,7 +17,7 @@ class MessageDetails:
     """A provider message combined with its local workflow metadata."""
 
     message: EmailMessage
-    classification: ClassificationOutput | None
+    triage: TriageOutput | None
 
 
 class MessageService:
@@ -40,4 +40,4 @@ class MessageService:
             row.provider_mailbox,
         )
         message = provider.get_message(row.provider_uid, row.provider_mailbox)
-        return MessageDetails(message, row.classification_value())
+        return MessageDetails(message, row.triage_value())

@@ -8,7 +8,7 @@
       "text_body": "A production API key appeared in a public repository. Revoke it and confirm containment today.",
       "received_days_ago": 1
     },
-    "classification": {
+    "triage": {
       "category": "action",
       "requires_reply": true,
       "priority": "urgent",
@@ -28,7 +28,7 @@
       "text_body": "Invoice 4815 is overdue. Please approve the payment by Friday to avoid a service interruption.",
       "received_days_ago": 3
     },
-    "classification": {
+    "triage": {
       "category": "action",
       "requires_reply": true,
       "priority": "high",
@@ -47,7 +47,7 @@
       "text_body": "Can you send two times when you are available for the final interview next week?",
       "received_days_ago": 2
     },
-    "classification": {
+    "triage": {
       "category": "action",
       "requires_reply": true,
       "priority": "normal",
@@ -66,7 +66,7 @@
       "text_body": "The office is closed Monday for the holiday. Normal hours resume Tuesday.",
       "received_days_ago": 5
     },
-    "classification": {
+    "triage": {
       "category": "important",
       "requires_reply": false,
       "priority": "normal",
@@ -85,7 +85,7 @@
       "text_body": "The API reference now explains cursor pagination and retry behavior.",
       "received_days_ago": 20
     },
-    "classification": {
+    "triage": {
       "category": "reference",
       "requires_reply": false,
       "priority": "low",
@@ -104,7 +104,7 @@
       "text_body": "This week includes Python releases, database articles, and conference links.",
       "received_days_ago": 1
     },
-    "classification": {
+    "triage": {
       "category": "newsletters",
       "requires_reply": false,
       "priority": "low",
@@ -123,7 +123,7 @@
       "text_body": "Payment of $42.00 was received. No action is required.",
       "received_days_ago": 4
     },
-    "classification": {
+    "triage": {
       "category": "receipts",
       "requires_reply": false,
       "priority": "low",
@@ -142,7 +142,7 @@
       "text_body": "Act now to claim a guaranteed prize before this offer expires.",
       "received_days_ago": 1
     },
-    "classification": {
+    "triage": {
       "category": "noise",
       "requires_reply": false,
       "priority": "low",

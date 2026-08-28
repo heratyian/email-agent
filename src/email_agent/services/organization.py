@@ -4,9 +4,9 @@ import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from email_agent.ai.classifier import EmailClassifier
+from email_agent.ai.triager import EmailTriager
 from email_agent.config import AccountConfig
-from email_agent.db import CategorySync, Classification, Draft, Message
+from email_agent.db import CategorySync, Draft, Message, Triage
 from email_agent.providers import MailProvider
 from email_agent.services.category_routing import category_destination
 
@@ -31,7 +31,7 @@ class OrganizationItem:
     subject: str
     status: OrganizationStatus
     destination: str | None = None
-    reclassified_as: str | None = None
+    retriaged_as: str | None = None
     error: str | None = None
 
 
@@ -63,19 +63,19 @@ class OrganizationReport:
 
 
 class OrganizationService:
-    """Reclassify and synchronize stored categories without CLI concerns."""
+    """Retriage and synchronize stored categories without CLI concerns."""
 
     def __init__(
         self,
         account_id: str,
         account: AccountConfig,
         provider: MailProvider,
-        classifier: EmailClassifier | None = None,
+        triager: EmailTriager | None = None,
     ):
         self.account_id = account_id
         self.account = account
         self.provider = provider
-        self.classifier = classifier
+        self.triager = triager
 
     def run(
         self,
@@ -83,17 +83,17 @@ class OrganizationService:
         limit: int = 100,
         dry_run: bool = False,
         force: bool = False,
-        reclassify_unknown: bool = False,
-        reclassify_all: bool = False,
+        retriage_unknown: bool = False,
+        retriage_all: bool = False,
     ) -> OrganizationReport:
         """Organize recent local messages and isolate failures per message."""
         if limit < 1:
             raise ValueError("limit must be at least 1")
-        if reclassify_unknown and reclassify_all:
-            raise ValueError("Use only one reclassification option")
-        should_reclassify = reclassify_unknown or reclassify_all
-        if should_reclassify and self.classifier is None:
-            raise ValueError("Reclassification requires a configured classifier")
+        if retriage_unknown and retriage_all:
+            raise ValueError("Use only one retriage option")
+        should_retriage = retriage_unknown or retriage_all
+        if should_retriage and self.triager is None:
+            raise ValueError("Retriage requires a configured triager")
 
         report = OrganizationReport(dry_run=dry_run)
         rows = Message.organization_candidates(self.account_id, limit)
@@ -104,8 +104,8 @@ class OrganizationService:
                     row,
                     dry_run=dry_run,
                     force=force,
-                    reclassify_unknown=reclassify_unknown,
-                    reclassify_all=reclassify_all,
+                    retriage_unknown=retriage_unknown,
+                    retriage_all=retriage_all,
                 )
             )
         logger.info(
@@ -123,24 +123,24 @@ class OrganizationService:
         *,
         dry_run: bool,
         force: bool,
-        reclassify_unknown: bool,
-        reclassify_all: bool,
+        retriage_unknown: bool,
+        retriage_all: bool,
     ) -> OrganizationItem:
         local_id, subject = row.id, row.subject
-        classification = row.classification_value()
+        triage = row.triage_value()
         missing_category = False
         try:
-            destination = category_destination(self.account.agent, classification)
+            destination = category_destination(self.account.agent, triage)
         except KeyError as exc:
             missing_category = True
-            if not (reclassify_unknown or reclassify_all):
+            if not (retriage_unknown or retriage_all):
                 return OrganizationItem(
                     local_id, subject, OrganizationStatus.FAILED, error=exc.args[0]
                 )
             destination = None
 
-        reclassified_as = None
-        if reclassify_all or (reclassify_unknown and missing_category):
+        retriaged_as = None
+        if retriage_all or (retriage_unknown and missing_category):
             try:
                 message = self.provider.get_message(
                     row.provider_uid, row.provider_mailbox
@@ -148,12 +148,12 @@ class OrganizationService:
                 thread = self.provider.get_thread(
                     row.provider_uid, row.provider_mailbox
                 )
-                classification = self.classifier.classify(message, thread)
-                destination = category_destination(self.account.agent, classification)
-                reclassified_as = classification.category or "uncategorized"
+                triage = self.triager.triage(message, thread)
+                destination = category_destination(self.account.agent, triage)
+                retriaged_as = triage.category or "uncategorized"
                 if not dry_run:
-                    Classification.save_for(row, classification)
-                    if not classification.requires_reply:
+                    Triage.save_for(row, triage)
+                    if not triage.requires_reply:
                         Draft.delete().where(
                             (Draft.message == local_id) & (Draft.status == "generated")
                         ).execute()
@@ -162,24 +162,24 @@ class OrganizationService:
                     local_id,
                     subject,
                     OrganizationStatus.FAILED,
-                    error=f"reclassification failed: {exc}",
+                    error=f"retriage failed: {exc}",
                 )
 
         if destination is None:
             previous = row.current_category_sync()
-            if not (reclassify_unknown or reclassify_all) or previous is None:
+            if not (retriage_unknown or retriage_all) or previous is None:
                 return OrganizationItem(
                     local_id,
                     subject,
                     OrganizationStatus.UNCATEGORIZED,
-                    reclassified_as=reclassified_as,
+                    retriaged_as=retriaged_as,
                 )
             if dry_run:
                 return OrganizationItem(
                     local_id,
                     subject,
                     OrganizationStatus.PREVIEW,
-                    reclassified_as=reclassified_as,
+                    retriaged_as=retriaged_as,
                 )
             try:
                 self.provider.sync_category(
@@ -191,14 +191,14 @@ class OrganizationService:
                     local_id,
                     subject,
                     OrganizationStatus.FAILED,
-                    reclassified_as=reclassified_as,
+                    retriaged_as=retriaged_as,
                     error=str(exc),
                 )
             return OrganizationItem(
                 local_id,
                 subject,
                 OrganizationStatus.SYNCED,
-                reclassified_as=reclassified_as,
+                retriaged_as=retriaged_as,
             )
 
         sync_key = self.provider.category_sync_key(destination)
@@ -208,7 +208,7 @@ class OrganizationService:
                 subject,
                 OrganizationStatus.SKIPPED,
                 destination=destination,
-                reclassified_as=reclassified_as,
+                retriaged_as=retriaged_as,
             )
         if dry_run:
             return OrganizationItem(
@@ -216,7 +216,7 @@ class OrganizationService:
                 subject,
                 OrganizationStatus.PREVIEW,
                 destination=destination,
-                reclassified_as=reclassified_as,
+                retriaged_as=retriaged_as,
             )
         try:
             previous = row.current_category_sync()
@@ -234,7 +234,7 @@ class OrganizationService:
                 subject,
                 OrganizationStatus.FAILED,
                 destination=destination,
-                reclassified_as=reclassified_as,
+                retriaged_as=retriaged_as,
                 error=str(exc),
             )
         return OrganizationItem(
@@ -242,5 +242,5 @@ class OrganizationService:
             subject,
             OrganizationStatus.SYNCED,
             destination=destination,
-            reclassified_as=reclassified_as,
+            retriaged_as=retriaged_as,
         )

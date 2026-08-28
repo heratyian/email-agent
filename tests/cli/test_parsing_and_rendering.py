@@ -12,7 +12,7 @@ from email_agent.search.models import InboxSearchResponse, InboxSearchResult
 
 def test_category_name_formats_optional_category():
     assert category_name("follow_up") == "follow up"
-    assert category_name(None) == "Uncategorized"
+    assert category_name(None) == ""
 
 
 def test_inbox_table_has_labeled_aligned_columns(capsys):
@@ -23,6 +23,7 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
         sender="Karen Hall",
         subject="40 hours for Big Green Company",
         category="agent/solicitations",
+        needs_triage=False,
         requires_reply=True,
         draft_ready=True,
     )
@@ -31,11 +32,32 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
     assert all(label in lines[0] for label in ("ID", "PRIORITY", "FROM", "SUBJECT", "CATEGORY"))
     assert "REPLY" in lines[0]
     assert "DRAFT" in lines[0]
+    assert "TRIAGE" in lines[0]
     assert "#175" in lines[2]
     assert "Karen Hall" in lines[2]
     assert "agent/solicitations" in lines[2]
     assert "YES" in lines[2]
     assert "READY" in lines[2]
+
+
+def test_inbox_table_marks_untriaged_messages_and_leaves_category_empty(capsys):
+    inbox_table_header()
+    inbox_table_row(
+        local_id=176,
+        priority="—",
+        sender="New Sender",
+        subject="Not processed yet",
+        category=None,
+        needs_triage=True,
+        requires_reply=None,
+        draft_ready=False,
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    category_start = lines[0].index("CATEGORY")
+    triage_start = lines[0].index("TRIAGE")
+    assert lines[2][category_start:triage_start].strip() == ""
+    assert lines[2][triage_start:].startswith("PENDING")
 
 
 def test_inbox_cell_uses_terminal_width_for_emojis():

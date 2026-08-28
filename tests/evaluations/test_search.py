@@ -116,7 +116,7 @@ def test_empty_search_requires_no_retrieval_and_no_citations():
 
 def test_checked_in_search_corpus_has_stable_unique_keys(tmp_path):
     from email_agent.db import initialize_database
-    from email_agent.evaluations.classification import load_profile
+    from email_agent.evaluations.triage import load_profile
 
     initialize_database(tmp_path / "email.db")
     profile = load_profile("personal")

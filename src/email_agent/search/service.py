@@ -8,7 +8,7 @@ from email_agent.search.tools import make_search_tools
 
 
 class InboxSearchService:
-    """Search classified local email with natural language queries."""
+    """Search triaged local email with natural language queries."""
 
     def __init__(self, settings: Settings, account_id: str, account: AccountConfig, model):
         self.settings = settings
@@ -34,7 +34,7 @@ class InboxSearchService:
                     "account_id": self.account_id,
                     "model_provider": self.account.model.provider,
                     "model": self.account.model.model,
-                    "retrieval": "chroma-classification-summaries",
+                    "retrieval": "chroma-triage-summaries",
                 },
             },
         )

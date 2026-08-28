@@ -1,14 +1,14 @@
 from types import SimpleNamespace
 
-from email_agent.ai.outputs import ClassificationOutput
+from email_agent.ai.outputs import TriageOutput
 from email_agent.config import AgentConfig
-from email_agent.db import CategorySync, Classification, Message, initialize_database
+from email_agent.db import CategorySync, Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.services.organization import OrganizationService, OrganizationStatus
 
 
-def classification(category: str | None) -> ClassificationOutput:
-    return ClassificationOutput(
+def triage(category: str | None) -> TriageOutput:
+    return TriageOutput(
         category=category,
         requires_reply=False,
         priority="normal",
@@ -22,7 +22,7 @@ def account():
         agent=AgentConfig.model_validate(
             {
                 "model": {"provider": "openai", "model": "test"},
-                "classification_prompt": "prompts/test/classification.md",
+                "triage_prompt": "prompts/test/triage.md",
                 "draft_prompt": "prompts/test/draft.md",
                 "categories": {"action": "Requires action."},
             }
@@ -59,7 +59,7 @@ def row(local_id: int, category: str | None):
         subject=f"Message {local_id}",
         received_at="2026-01-01T00:00:00+00:00",
     )
-    Classification.save_for(message, classification(category))
+    Triage.save_for(message, triage(category))
     return message
 
 
@@ -81,14 +81,14 @@ def test_organization_service_reports_mixed_message_outcomes(tmp_path):
     assert "unknown category" in report.items[2].error
 
 
-def test_dry_run_reclassification_has_no_side_effects(tmp_path):
+def test_dry_run_retriage_has_no_side_effects(tmp_path):
     initialize_database(tmp_path / "test.db")
     stored = row(1, "obsolete")
     provider = FakeProvider()
 
     class Agents:
-        def classify(self, message, thread):
-            return ClassificationOutput(
+        def triage(self, message, thread):
+            return TriageOutput(
                 category="action",
                 requires_reply=True,
                 priority="normal",
@@ -98,11 +98,11 @@ def test_dry_run_reclassification_has_no_side_effects(tmp_path):
 
     report = OrganizationService(
         "person@example.com", account(), provider, Agents()
-    ).run(dry_run=True, reclassify_all=True)
+    ).run(dry_run=True, retriage_all=True)
 
     assert report.changed == 1
     assert report.items[0].status is OrganizationStatus.PREVIEW
-    assert report.items[0].reclassified_as == "action"
-    assert stored.classification_value().category == "obsolete"
+    assert report.items[0].retriaged_as == "action"
+    assert stored.triage_value().category == "obsolete"
     assert not CategorySync.select().exists()
     assert provider.synced == []

@@ -17,8 +17,8 @@ class FakeDrafter:
     def __init__(self):
         self.calls = []
 
-    def draft(self, message, thread, classification, instruction=None):
-        self.calls.append((message, thread, classification, instruction))
+    def draft(self, message, thread, triage, instruction=None):
+        self.calls.append((message, thread, triage, instruction))
         return DraftOutput(
             recipient=message.from_address,
             subject=f"Re: {message.subject}",
@@ -80,7 +80,7 @@ def example_inputs():
                 "text_body": "I am available next week.",
             }
         ],
-        "classification": {
+        "triage": {
             "category": "action",
             "requires_reply": True,
             "priority": "normal",
@@ -108,10 +108,10 @@ def test_drafting_target_uses_production_inputs():
 
     output = drafting_target(drafter)(example_inputs())
 
-    message, thread, classification, instruction = drafter.calls[0]
+    message, thread, triage, instruction = drafter.calls[0]
     assert message.from_address == "alex@example.test"
     assert len(thread.messages) == 1
-    assert classification.requires_reply is True
+    assert triage.requires_reply is True
     assert instruction == "Prefer Wednesday."
     assert output["recipient"] == "alex@example.test"
 

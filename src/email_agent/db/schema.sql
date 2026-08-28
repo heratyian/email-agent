@@ -11,8 +11,7 @@ CREATE TABLE "messages" (
     "text_body" TEXT,
     "received_at" DATETIME NOT NULL,
     "provider_mailbox" TEXT NOT NULL,
-    "provider_uid" TEXT NOT NULL,
-    "classified_at" DATETIME
+    "provider_uid" TEXT NOT NULL
 );
 CREATE UNIQUE INDEX "messages_account_id_provider_message_id"
     ON "messages" ("account_id", "provider_message_id");
@@ -31,7 +30,7 @@ CREATE INDEX "category_syncs_message_id" ON "category_syncs" ("message_id");
 CREATE UNIQUE INDEX "category_syncs_message_id_destination"
     ON "category_syncs" ("message_id", "destination");
 
-CREATE TABLE "classifications" (
+CREATE TABLE "triages" (
     "id" INTEGER NOT NULL PRIMARY KEY,
     "message_id" INTEGER NOT NULL,
     "category" TEXT,
@@ -42,9 +41,10 @@ CREATE TABLE "classifications" (
     "confidence" REAL NOT NULL,
     "requires_escalation" INTEGER NOT NULL,
     "escalation_reason" TEXT,
+    "category_sync_pending" INTEGER NOT NULL,
     FOREIGN KEY ("message_id") REFERENCES "messages" ("id")
 );
-CREATE UNIQUE INDEX "classifications_message_id" ON "classifications" ("message_id");
+CREATE UNIQUE INDEX "triages_message_id" ON "triages" ("message_id");
 
 CREATE TABLE "drafts" (
     "id" TEXT NOT NULL PRIMARY KEY,

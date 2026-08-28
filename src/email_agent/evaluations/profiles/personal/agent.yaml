@@ -2,7 +2,7 @@ model:
   provider: openai
   model: gpt-5.4-nano
   temperature: 0
-classification_prompt: classification.md
+triage_prompt: triage.md
 draft_prompt: draft.md
 categories:
   action: Requires a reply, decision, or other action.

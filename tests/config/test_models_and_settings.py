@@ -14,7 +14,7 @@ accounts:
     credentials_file: secrets/credentials.json
     token_file: secrets/token.json
     model: {provider: openai, model: test-model}
-    classification_prompt: prompts/person/classification.md
+    triage_prompt: prompts/person/triage.md
     draft_prompt: prompts/person/draft.md
 """
     )
@@ -36,7 +36,7 @@ def test_category_action_is_imap_only():
                 "category_action": "move",
                 "email": "person@example.com",
                 "model": {"provider": "openai", "model": "test"},
-                "classification_prompt": "prompts/classification.md",
+                "triage_prompt": "prompts/triage.md",
                 "draft_prompt": "prompts/draft.md",
             }
         )
@@ -47,8 +47,8 @@ def test_nested_category_paths_are_validated(tmp_path):
     raw = (tmp_path / "accounts.yaml").read_text()
     (tmp_path / "accounts.yaml").write_text(
         raw.replace(
-            "    classification_prompt:",
-            "    categories:\n      agent/follow_up: Needs my response.\n    classification_prompt:",
+            "    triage_prompt:",
+            "    categories:\n      agent/follow_up: Needs my response.\n    triage_prompt:",
         )
     )
     agent = Settings(tmp_path).account("person@example.com").agent

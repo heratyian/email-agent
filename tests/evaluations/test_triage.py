@@ -3,16 +3,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from email_agent.ai.outputs import ClassificationOutput
-from email_agent.evaluations.classification import (
+from email_agent.ai.outputs import TriageOutput
+from email_agent.evaluations.triage import (
     category_accuracy,
-    classification_target,
     ensure_dataset,
     escalation_accuracy,
     load_profile,
     priority_accuracy,
     reply_accuracy,
-    run_classification_evaluation,
+    run_triage_evaluation,
+    triage_target,
     validate_reference_categories,
 )
 
@@ -21,9 +21,9 @@ class FakeAgents:
     def __init__(self):
         self.messages = []
 
-    def classify(self, message, thread):
+    def triage(self, message, thread):
         self.messages.append((message, thread))
-        return ClassificationOutput(
+        return TriageOutput(
             category="action",
             requires_reply=True,
             priority="normal",
@@ -32,10 +32,10 @@ class FakeAgents:
         )
 
 
-def test_classification_target_uses_production_message_shape():
-    classifier = FakeAgents()
+def test_triage_target_uses_production_message_shape():
+    triager = FakeAgents()
 
-    output = classification_target(classifier)(
+    output = triage_target(triager)(
         {
             "from_address": "customer@example.test",
             "subject": "Question",
@@ -43,7 +43,7 @@ def test_classification_target_uses_production_message_shape():
         }
     )
 
-    message, thread = classifier.messages[0]
+    message, thread = triager.messages[0]
     assert message.received_at == datetime(2026, 1, 1, tzinfo=UTC)
     assert message.text_body == "Can you help?"
     assert thread.messages == [message]
@@ -75,7 +75,7 @@ def test_checked_in_examples_use_supported_categories():
 
     validate_reference_categories(profile.examples, profile.agent.categories)
     assert profile.agent.model.model == "gpt-5.4-nano"
-    assert profile.agent.classification_prompt == "classification.md"
+    assert profile.agent.triage_prompt == "triage.md"
 
 
 def test_unknown_profile_is_rejected():
@@ -120,13 +120,13 @@ class FakeClient:
 def test_dataset_is_seeded_only_when_it_does_not_exist():
     client = FakeClient(exists=False)
 
-    ensure_dataset(client, "classification", [{"inputs": {}, "outputs": {}}])
+    ensure_dataset(client, "triage", [{"inputs": {}, "outputs": {}}])
 
-    assert client.created[0]["dataset_name"] == "classification"
+    assert client.created[0]["dataset_name"] == "triage"
     assert client.examples[0]["dataset_id"] == "dataset-1"
 
     existing = FakeClient(exists=True)
-    ensure_dataset(existing, "classification", [])
+    ensure_dataset(existing, "triage", [])
     assert existing.created == []
 
 
@@ -135,7 +135,7 @@ def test_new_dataset_is_assigned_to_application():
 
     ensure_dataset(
         client,
-        "classification",
+        "triage",
         [],
         application_tag_value_id="application-tag-value-id",
     )
@@ -145,20 +145,20 @@ def test_new_dataset_is_assigned_to_application():
 
 def test_evaluation_uses_profile_without_account_settings(monkeypatch):
     client = FakeClient(exists=False)
-    classifier = FakeAgents()
+    triager = FakeAgents()
     monkeypatch.setattr(
-        "email_agent.evaluations.classification.get_model", lambda model: "model"
+        "email_agent.evaluations.triage.get_model", lambda model: "model"
     )
     monkeypatch.setattr(
-        "email_agent.evaluations.classification.EmailClassifier",
-        lambda root, agent, model: classifier,
+        "email_agent.evaluations.triage.EmailTriager",
+        lambda root, agent, model: triager,
     )
     monkeypatch.setenv("LANGSMITH_APPLICATION_TAG_VALUE_ID", "application-tag-value-id")
 
-    result = run_classification_evaluation("personal", client=client)
+    result = run_triage_evaluation("personal", client=client)
 
     assert result == "results"
     _, values = client.evaluations[0]
-    assert values["data"] == "classification-personal"
+    assert values["data"] == "triage-personal"
     assert values["metadata"]["evaluation_profile"] == "personal"
     assert client.created[0]["tag_value_ids"] == ["application-tag-value-id"]

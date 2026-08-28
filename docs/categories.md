@@ -11,7 +11,7 @@ categories:
   agent/reference: Useful information requiring no action.
 ```
 
-The description teaches the classifier when to use the category. The key is the
+The description teaches the triager when to use the category. The key is the
 exact Gmail label or IMAP folder path.
 
 ## Naming rules
@@ -20,7 +20,9 @@ A category key must be lowercase ASCII text. Each `/`-separated segment may use
 letters, numbers, and underscores. Use `travel` for a top-level destination or
 `agent/travel` for a nested destination.
 
-Messages that do not clearly match a configured category remain Uncategorized.
+Messages that do not clearly match a configured category remain without a category.
+The inbox leaves their category cell empty. The separate `TRIAGE` column shows
+`PENDING` when a message still needs triage and `DONE` after triage completes.
 They still receive a priority, summary, and reply recommendation, but Email Agent
 does not apply a label or folder.
 
@@ -29,7 +31,7 @@ translate obsolete category names.
 
 ## Gmail behavior
 
-For Gmail, Email Agent applies the category as a label. Reclassification replaces
+For Gmail, Email Agent applies the category as a label. Retriage replaces
 the previous agent-managed label. It leaves unrelated labels unchanged.
 
 Gmail accounts must not set `category_action`. Label synchronization requires the
@@ -47,16 +49,16 @@ Set `category_action: move` to remove categorized messages from Inbox. Move mode
 also requires the server's `MOVE` capability. Email Agent refuses an unsafe
 fallback when the required capability is unavailable.
 
-Reclassification replaces the previous agent-managed folder copy. It leaves the
+Retriage replaces the previous agent-managed folder copy. It leaves the
 original Inbox message unchanged in copy mode.
 
 ## Change a taxonomy
 
-After changing category keys or descriptions, reclassify and synchronize recent
+After changing category keys or descriptions, retriage and synchronize recent
 stored messages:
 
 ```bash
-uv run email-agent classify --account you@example.com --all
+uv run email-agent triage --account you@example.com --all
 ```
 
 Review the proposed taxonomy before running this command. It can change Gmail
