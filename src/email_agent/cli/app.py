@@ -337,7 +337,7 @@ def evaluate_search(
         str | None, typer.Option(help="Override the LangSmith dataset name.")
     ] = None,
 ):
-    """Evaluate the production inbox search graph and RAG pipeline."""
+    """Evaluate the production hybrid inbox search and RAG pipeline."""
     from email_agent.evaluations import run_search_evaluation
 
     try:

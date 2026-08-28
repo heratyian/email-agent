@@ -69,6 +69,11 @@ class RuntimeFactory:
         account = self.settings.account(account_id)
         return self._build(account_id, account, model=get_model(account.model))
 
+    def for_assistant(self, account_id: str) -> AccountRuntime:
+        """Build a runtime for natural-language orchestration."""
+        account = self.settings.account(account_id)
+        return self._build(account_id, account, model=get_model(account.model))
+
     def _build(
         self,
         account_id: str,

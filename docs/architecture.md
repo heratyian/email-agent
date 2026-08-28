@@ -10,12 +10,14 @@ same application services and persistence layer.
   synthetic provider through the same interface.
 - `db/` owns SQLite persistence and migrations.
 - `services/` owns provider-independent application workflows.
-- `ai/` owns model construction, prompts, embeddings, and bounded structured model calls.                                                                                
-- `search/` owns the LangGraph natural-language inbox search workflow.  
+- `ai/` owns model construction, prompts, embeddings, and bounded structured model calls.
+- `search/` owns the read-only hybrid inbox retrieval pipeline.
+- `assistant/` owns typed intents, LangChain tool adapters, session context,
+  confirmation state, and the conversational LangGraph.
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
 
 `RuntimeFactory` provides workflow-specific constructors for inbox,
-triage, drafting, and search runtimes. Each runtime includes only the
+triage, drafting, search, and assistant runtimes. Each runtime includes only the
 configured dependencies needed for that workflow. Services do not import CLI
 code.
 
@@ -30,8 +32,11 @@ Typer command ─┐
 Shell command ─┘
 ```
 
-Chat is an interface, not the architecture. The shell does not give a model a
-provider object, database handle, credential, or write-capable tool.
+Plain text is interpreted by a structured model call and routed through an
+explicit graph. The graph invokes narrow LangChain tools backed by the same
+handlers as slash commands. The model never receives a provider object, database
+handle, or credential. Triage and provider draft upload require a separate
+confirmation turn; no send-email tool exists.
 
 ## Message workflow
 
@@ -78,13 +83,16 @@ location. Runtime construction always begins with a validated account key.
 
 ## Model boundary
 
-Models perform two bounded tasks:
+Models perform bounded tasks:
 
 - Triage one message and its thread.
 - Draft one suggested reply from a triage and thread.
+- Plan and synthesize read-only hybrid search.
+- Select one supported conversational intent.
 
-Both tasks use validated structured output and no tools. Python owns provider
-calls, loops, retries, persistence, category changes, and draft upload.
+Model-produced triage, drafts, search answers, and intents use validated
+structured output. Python owns provider calls, loops, retries, persistence,
+category changes, confirmations, and draft upload.
 
 ## Storage
 

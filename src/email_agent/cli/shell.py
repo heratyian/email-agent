@@ -10,6 +10,7 @@ import typer
 from email_agent.cli.commands import CommandHandlers
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
+    render_draft,
     render_draft_list,
     render_inbox_items,
     render_inbox_search_response,
@@ -35,7 +36,7 @@ class ShellUsageError(ValueError):
 
 
 class InteractiveShell:
-    """Small deterministic command shell; it deliberately has no NL router."""
+    """Interactive shell with explicit commands and constrained natural language."""
 
     def __init__(
         self,
@@ -48,6 +49,8 @@ class InteractiveShell:
         self.handlers = handlers or CommandHandlers()
         self.prompt = prompt
         self._interrupted_empty_prompt = False
+        self._assistant = None
+        self._assistant_account_id: str | None = None
 
     def run(self) -> None:
         typer.secho("Email Agent", bold=True)
@@ -115,7 +118,7 @@ class InteractiveShell:
 
     def dispatch(self, line: str) -> None:
         if not line.startswith("/"):
-            typer.echo("Natural-language routing is not enabled yet. Type /help for commands.")
+            self._natural_language(line)
             return
         command_text = line.split(maxsplit=1)[0]
         command = command_text.casefold()
@@ -159,6 +162,30 @@ class InteractiveShell:
         if not self.session.account_id:
             raise RuntimeError("No active account; use /account EMAIL")
         return self.session.account_id
+
+    def _natural_language(self, line: str) -> None:
+        account_id = self._active()
+        if self._assistant is None or self._assistant_account_id != account_id:
+            self._assistant = self.handlers.assistant(account_id)
+            self._assistant_account_id = account_id
+        turn = self._assistant.invoke(line)
+        if turn.kind == "inbox":
+            render_inbox_items(turn.payload)
+        elif turn.kind == "search":
+            render_inbox_search_response(turn.payload)
+        elif turn.kind == "message":
+            render_message_details(turn.payload, show_confidence=False)
+        elif turn.kind == "triage":
+            render_triage_results(turn.payload)
+        elif turn.kind == "draft":
+            render_draft(turn.payload)
+        elif turn.kind == "drafts":
+            if turn.payload:
+                render_draft_list(turn.payload)
+            else:
+                typer.echo("No draft suggestions to review.")
+        else:
+            typer.echo(turn.message or "I could not complete that request.")
 
     def _require_active_message(self, message_id: int) -> int:
         account_id = self.handlers.message_account(message_id)
@@ -278,6 +305,8 @@ class InteractiveShell:
         if args[0] not in accounts:
             raise ValueError(f"Unknown account: {args[0]}")
         self.session.account_id = args[0]
+        self._assistant = None
+        self._assistant_account_id = None
         typer.echo(f"Account: {args[0]}")
 
     def _verbose(self, args: list[str]) -> None:
@@ -310,9 +339,10 @@ class InteractiveShell:
 
 
 HELP_TEXT = """Commands:
+  Plain text                      Ask the conversational assistant
   /inbox [limit]                 Synchronize and show recent mail
   /search QUERY                  Search triaged local mail with natural language
-  /triage [LOCAL_ID]           Triage untriaged mail (or one message)
+  /triage [LOCAL_ID]             Triage untriaged mail (or one message)
   /show LOCAL_ID                 Show a message
   /draft LOCAL_ID [instruction]  Generate or regenerate a reply suggestion
   /drafts                        List pending suggestions

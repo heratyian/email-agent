@@ -15,7 +15,7 @@ from email_agent.ai.outputs import TriageOutput
 from email_agent.db import Message, Triage, initialize_database
 from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
 from email_agent.providers.models import EmailMessage
-from email_agent.search.graph import build_inbox_search_graph
+from email_agent.search.pipeline import run_inbox_search
 from email_agent.search.tools import make_search_tools, sync_summary_vector_store
 
 EVALUATION_ACCOUNT_ID = "search-evaluation@example.test"
@@ -47,15 +47,12 @@ def seed_search_corpus(path: Path, account_id: str = EVALUATION_ACCOUNT_ID) -> d
     return keys_by_id
 
 
-def search_target(graph, keys_by_id: dict[int, str]) -> Callable[[dict], dict]:
-    """Build a LangSmith target around the production inbox search graph."""
+def search_target(pipeline, keys_by_id: dict[int, str]) -> Callable[[dict], dict]:
+    """Build a LangSmith target around the production inbox search pipeline."""
 
     def search(inputs: dict) -> dict:
-        result = graph.invoke(
-            {
-                "account_id": EVALUATION_ACCOUNT_ID,
-                "user_query": inputs["query"],
-            },
+        result = pipeline(
+            inputs["query"],
             config={
                 "tags": ["email-agent", "inbox-search", "evaluation"],
                 "metadata": {"workflow": "inbox-search-evaluation"},
@@ -151,7 +148,7 @@ def search_metadata(profile) -> dict[str, Any]:
         "evaluation_profile": profile.name,
         "model_provider": profile.agent.model.provider,
         "model": profile.agent.model.model,
-        "graph": "parallel-structured-vector-search-v1",
+        "pipeline": "hybrid-structured-vector-search-v1",
         "retrieval": "chroma-triage-summaries-v1",
         "corpus": "search-corpus-v1",
     }
@@ -163,7 +160,7 @@ def run_search_evaluation(
     dataset_name: str | None = None,
     client: Client | None = None,
 ):
-    """Run the production inbox search graph against a synthetic fixed corpus."""
+    """Run the production inbox search pipeline against a synthetic fixed corpus."""
     profile = load_profile(profile_name)
     examples = load_examples(profile.root / "search_examples.json")
     dataset_name = dataset_name or f"search-{profile.name}"
@@ -184,12 +181,13 @@ def run_search_evaluation(
         embeddings = get_embedding_model(profile.agent.model)
         vector_directory = root / "chroma"
         sync_summary_vector_store(EVALUATION_ACCOUNT_ID, vector_directory, embeddings)
-        graph = build_inbox_search_graph(
-            model,
-            *make_search_tools(EVALUATION_ACCOUNT_ID, vector_directory, embeddings),
-        )
+        tools = make_search_tools(EVALUATION_ACCOUNT_ID, vector_directory, embeddings)
+
+        def pipeline(query: str, *, config: dict):
+            return run_inbox_search(model, *tools, query, config=config)
+
         return client.evaluate(
-            search_target(graph, keys_by_id),
+            search_target(pipeline, keys_by_id),
             data=dataset_name,
             evaluators=EVALUATORS,
             experiment_prefix=f"search-{profile.name}",

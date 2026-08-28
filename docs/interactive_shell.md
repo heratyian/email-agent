@@ -6,9 +6,21 @@ The interactive shell is the easiest way to use Email Agent manually:
 uv run email-agent
 ```
 
-The current shell uses deterministic slash commands. Natural-language routing is
-planned for phase 3 but is not enabled yet. If text does not start with `/`, the
-shell directs you to `/help`.
+The shell accepts constrained natural-language requests and deterministic slash
+commands. Both interfaces call the same application handlers.
+
+```text
+> fetch my five newest messages
+> find messages about the interview that need a reply
+> draft a concise reply to message 203
+> upload that draft
+Upload the suggestion for message #203 to mailbox drafts? [yes/no]
+```
+
+Triage and mailbox draft upload require a separate confirmation turn. Read-only
+operations and local draft generation run immediately. The assistant cannot send
+email, delete data, or change accounts; use explicit slash commands for other
+supported shell operations.
 
 ## Select an account
 
@@ -107,6 +119,7 @@ sends the message. `/delete-draft LOCAL_ID` removes the pending local suggestion
 without changing an uploaded mailbox draft.
 
 These slash commands are explicit authorization for their documented effects.
+Conversational triage and upload requests are not authorization until confirmed.
 
 ### Change diagnostics
 
@@ -123,8 +136,9 @@ Use `/quit`, `/exit`, `quit`, or end-of-file to exit. An invalid command or an
 operation failure returns to the prompt. Press Ctrl-C during an operation to
 cancel it. At an empty prompt, press Ctrl-C twice to exit.
 
-## Design status
+## Conversational state
 
-The shell currently contains no natural-language router. The architectural reason
-is recorded in [ADR 0001](adr/0001-deterministic-interactive-shell.md). Phase 3 is
-defined in [the interactive shell specification](interactive_shell_spec.md).
+The shell remembers result IDs and the most recently generated draft for the
+current session. References such as "that message" resolve only when the target
+is unambiguous. Switching accounts clears this context. Slash commands remain the
+most predictable interface for scripts and exact operations.

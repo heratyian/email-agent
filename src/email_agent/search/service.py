@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from email_agent.ai.embeddings import get_embedding_model
 from email_agent.config import AccountConfig, Settings
-from email_agent.search.graph import build_inbox_search_graph
 from email_agent.search.models import InboxSearchResponse
+from email_agent.search.pipeline import run_inbox_search
 from email_agent.search.tools import make_search_tools
 
 
@@ -17,16 +17,17 @@ class InboxSearchService:
         self.model = model
 
     def search(self, query: str) -> InboxSearchResponse:
-        """Run the inbox search graph and return grounded search results."""
+        """Run hybrid local retrieval and return grounded search results."""
         embeddings = get_embedding_model(self.account.model)
         tools = make_search_tools(
             self.account_id,
             self.settings.root / "data" / "chroma",
             embeddings,
         )
-        graph = build_inbox_search_graph(self.model, *tools)
-        result = graph.invoke(
-            {"account_id": self.account_id, "user_query": query},
+        result = run_inbox_search(
+            self.model,
+            *tools,
+            query,
             config={
                 "tags": ["email-agent", "inbox-search"],
                 "metadata": {

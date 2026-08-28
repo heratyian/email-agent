@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -59,16 +58,3 @@ class InboxSearchResponse(BaseModel):
 
     summary: str
     results: list[InboxSearchResult] = Field(default_factory=list)
-
-
-class InboxSearchState(TypedDict, total=False):
-    """State for one read-only natural language inbox search."""
-
-    account_id: str
-    user_query: str
-    plan: InboxSearchPlanOutput
-    structured_results: list[InboxSearchResult]
-    vector_results: list[InboxSearchResult]
-    ranked_results: list[InboxSearchResult]
-    output: InboxSearchOutput
-    response: InboxSearchResponse

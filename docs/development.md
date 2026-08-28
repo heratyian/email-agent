@@ -121,14 +121,14 @@ reconstruction with the corrected criteria and retain it as a regression case.
 
 ## Inbox search evaluation
 
-Run the production LangGraph search workflow against a fixed synthetic mailbox:
+Run the production hybrid search pipeline against a fixed synthetic mailbox:
 
 ```bash
 uv run email-agent evaluate search --profile personal
 ```
 
 The command creates a temporary SQLite database and Chroma index, seeds the
-checked-in triaged corpus, and runs each query through the production graph.
+checked-in triaged corpus, and runs each query through the production pipeline.
 It uses the profile's chat and embedding model, so it requires the model API key.
 The temporary data is deleted after the blocking evaluation completes.
 

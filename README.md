@@ -25,10 +25,10 @@ uv run email-agent demo
 The first run creates a persistent mailbox of fictional Faker messages. `/inbox`
 reads its newest 20 messages by default, or the requested limit, without creating
 duplicates. Messages are ordered by received time, newest first.
-Triage, drafting, LangChain tools, Chroma RAG, and the LangGraph search
-workflow use the configured OpenAI model and require `OPENAI_API_KEY`. Try
-`/inbox`, `/triage`, `/search which messages need a reply?`, `/draft LOCAL_ID`,
-`/review`, and `/upload LOCAL_ID`.
+Triage, drafting, search, and the conversational LangGraph use the configured
+OpenAI model and require `OPENAI_API_KEY`. Try plain requests such as `fetch my
+latest messages`, `find messages that need a reply`, and `draft a short reply to
+message 3`. The explicit slash commands remain available.
 
 Create a Gmail account from the personal template:
 
@@ -93,10 +93,10 @@ uv run email-agent search "find recent messages related to my job search"
 uv run email-agent search "what emails from this week need a reply?"
 ```
 
-The `/search` workflow uses LangGraph to plan the search, run read-only LangChain
-tools, retrieve triaged message summaries from Chroma, rank matches, and answer
-with local message IDs. It searches the local cache only and does not change
-mailbox labels, drafts, or messages.
+The `/search` workflow is a read-only hybrid retrieval pipeline. It plans the
+query, retrieves triaged message summaries from structured SQLite filters and
+Chroma, ranks matches, and answers with grounded local message IDs. It searches
+the local cache only and does not change mailbox labels, drafts, or messages.
 
 ```mermaid
 flowchart TD
@@ -112,6 +112,28 @@ Triage summaries are embedded instead of raw message bodies to reduce
 PII exposure. Summaries can still contain sensitive information. The Chroma index
 is synchronized incrementally by `triage`, so unchanged messages are not
 embedded again. The read-only `/search` workflow only searches the existing index.
+
+## Conversational graph
+
+Plain text in the interactive shell runs through a constrained LangGraph. A
+structured intent selects one LangChain tool backed by the same command handlers
+as the slash commands. Read operations execute directly. Triage and mailbox draft
+upload enter a pending state and execute only after a separate confirmation turn.
+The application never exposes a send-email tool.
+
+```mermaid
+flowchart TD
+    A[User text] --> B[Interpret typed intent]
+    B --> C{Route}
+    C -->|Read or local draft| D[Execute LangChain tool]
+    C -->|Triage or upload| E[Prepare confirmation]
+    E --> F{Next turn}
+    F -->|Confirm| G[Execute provider-changing tool]
+    F -->|Cancel| H[Clear pending action]
+    D --> I[Render typed result]
+    G --> I
+    H --> I
+```
 
 ## Safety and privacy
 

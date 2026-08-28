@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from email_agent.ai.embeddings import get_embedding_model
+from email_agent.assistant import AssistantConversation
 from email_agent.config import AccountConfig, Settings
 from email_agent.db import Draft, Message
 from email_agent.generators import GeneratedAccount
@@ -117,6 +118,13 @@ class CommandHandlers:
             runtime.account,
             runtime.model,
         ).search(query)
+
+    def assistant(self, account_id: str) -> AssistantConversation:
+        """Build a stateful conversational graph for one shell session."""
+        runtime = self.runtime_factory.for_assistant(account_id)
+        if runtime.model is None:
+            raise RuntimeError("This workflow requires a configured model")
+        return AssistantConversation(account_id, runtime.model, self)
 
     def triage(
         self,

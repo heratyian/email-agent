@@ -128,3 +128,18 @@ def test_draft_guidance_is_one_call_data():
     shell.dispatch('/draft 203 "politely decline"')
 
     assert handlers.generated == (203, "politely decline")
+
+
+def test_plain_text_uses_conversational_assistant(capsys):
+    class Assistant:
+        def invoke(self, line):
+            assert line == "find messages about interviews"
+            return SimpleNamespace(kind="text", message="Found them.", payload=None)
+
+    handlers = FakeHandlers()
+    handlers.assistant = lambda account_id: Assistant()
+    shell = InteractiveShell(ShellSession("person@example.com"), handlers)
+
+    shell.dispatch("find messages about interviews")
+
+    assert capsys.readouterr().out == "Found them.\n"

@@ -5,12 +5,12 @@ from email_agent.ai.outputs import TriageOutput
 from email_agent.cli.commands.handlers import CommandHandlers
 from email_agent.db import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
-from email_agent.search.graph import build_search_response, ground_output, merge_results
 from email_agent.search.models import (
     InboxSearchItemOutput,
     InboxSearchOutput,
     InboxSearchPlanOutput,
 )
+from email_agent.search.pipeline import build_search_response, ground_output, merge_results
 from email_agent.search.tools import (
     retrieve_similar_summaries,
     search_triaged_messages,
