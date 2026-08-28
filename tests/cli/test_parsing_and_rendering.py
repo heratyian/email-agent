@@ -92,7 +92,6 @@ def test_inbox_search_response_uses_inbox_table_format(capsys):
     assert "Search · 1 messages" in output
     assert all(label in output for label in ("ID", "PRIORITY", "FROM", "MATCH"))
     assert all(
-        value in output
-        for value in ("#12", "HIGH", "Legal Team", "Contract approval", "YES")
+        value in output for value in ("#12", "HIGH", "Legal Team", "Contract approval", "YES")
     )
     assert "A decision is due tomorrow." in output

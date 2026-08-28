@@ -8,34 +8,42 @@ same application services and persistence layer.
 - `config/` loads and validates account configuration.
 - `providers/` adapts Gmail and IMAP operations. The demo supplies a local
   synthetic provider through the same interface.
-- `db/` owns SQLite persistence and migrations.
-- `services/` owns provider-independent application workflows.
-- `ai/` owns model construction, prompts, embeddings, and bounded structured model calls.
+- `accounts/` owns account configuration generation and validation.
+- `inbox/` owns inbox synchronization and message retrieval.
+- `triage/` owns triage output, prompting, model interaction, and workflow logic.
+- `drafting/` owns draft output, prompting, model interaction, and workflow logic.
 - `search/` owns the read-only hybrid inbox retrieval pipeline.
 - `assistant/` owns typed intents, LangChain tool adapters, session context,
   confirmation state, and the conversational LangGraph.
+- `llm/` owns shared model construction, embeddings, prompt utilities, and tracing.
+- `persistence/` owns SQLite models, connection management, and migrations.
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
+
+`application.py` is the terminal-independent façade shared by the CLI and
+conversational tools. Feature packages contain their own workflow and model-facing
+code instead of depending on generic technical service or AI packages.
 
 `RuntimeFactory` provides workflow-specific constructors for inbox,
 triage, drafting, search, and assistant runtimes. Each runtime includes only the
-configured dependencies needed for that workflow. Services do not import CLI
-code.
+configured dependencies needed for that workflow. Feature workflows do not
+import CLI code.
 
 ## Command flow
 
-Typer commands and shell commands call deterministic handlers. Handlers coordinate
-application services and return results for terminal rendering.
+Typer commands and shell commands call the deterministic `EmailApplication`
+façade. It coordinates feature workflows and returns results for terminal
+rendering.
 
 ```text
 Typer command ─┐
-               ├── command handler ── application service
+               ├── EmailApplication ── feature workflow
 Shell command ─┘
 ```
 
 Plain text is interpreted by a structured model call and routed through an
 explicit graph. The graph invokes narrow LangChain tools backed by the same
-handlers as slash commands. The model never receives a provider object, database
-handle, or credential. Triage and provider draft upload require a separate
+application façade as slash commands. The model never receives a provider object,
+database handle, or credential. Triage and provider draft upload require a separate
 confirmation turn; no send-email tool exists.
 
 ## Message workflow

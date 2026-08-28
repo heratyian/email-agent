@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import typer
 
-from email_agent.cli.commands import CommandHandlers
+from email_agent.application import EmailApplication
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
     render_draft,
@@ -41,12 +41,12 @@ class InteractiveShell:
     def __init__(
         self,
         session: ShellSession,
-        handlers: CommandHandlers | None = None,
+        handlers: EmailApplication | None = None,
         *,
         prompt: Callable[..., str] = typer.prompt,
     ):
         self.session = session
-        self.handlers = handlers or CommandHandlers()
+        self.handlers = handlers or EmailApplication()
         self.prompt = prompt
         self._interrupted_empty_prompt = False
         self._assistant = None
@@ -204,8 +204,8 @@ class InteractiveShell:
             raise ShellUsageError("/inbox [limit]")
         account_id = self._active()
         typer.echo(f"Checking {account_id}...")
-        result = self.handlers.run_inbox(account_id, limit)
-        render_inbox_items(result.items)
+        items = self.handlers.run_inbox(account_id, limit)
+        render_inbox_items(items)
 
     def _search(self, args: list[str]) -> None:
         if not args:
@@ -269,7 +269,13 @@ class InteractiveShell:
                 render_review_item(draft, None, str(exc))
             else:
                 render_review_item(draft, source, None)
-            choice = self.prompt("[u] Upload  [d] Delete  [k] Keep  [q] Quit", default="k", show_default=False).strip().lower()
+            choice = (
+                self.prompt(
+                    "[u] Upload  [d] Delete  [k] Keep  [q] Quit", default="k", show_default=False
+                )
+                .strip()
+                .lower()
+            )
             if choice in {"q", "quit"}:
                 break
             if choice in {"u", "upload"}:
@@ -287,9 +293,7 @@ class InteractiveShell:
         typer.echo("✓ Uploaded to mailbox drafts. No email was sent.")
 
     def _delete_draft(self, args: list[str]) -> None:
-        message_id = self._require_active_message(
-            self._one_id(args, "/delete-draft LOCAL_ID")
-        )
+        message_id = self._require_active_message(self._one_id(args, "/delete-draft LOCAL_ID"))
         self.handlers.delete_draft(message_id)
         typer.echo("✓ Deleted draft suggestion.")
 
@@ -361,6 +365,6 @@ def run_shell(
     account_id: str | None = None,
     verbosity: int = 0,
     trace_model: bool = False,
-    handlers: CommandHandlers | None = None,
+    handlers: EmailApplication | None = None,
 ) -> None:
     InteractiveShell(ShellSession(account_id, verbosity, trace_model), handlers).run()

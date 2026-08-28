@@ -6,13 +6,13 @@ from typing import Any
 
 from langsmith import Client
 
-from email_agent.ai.chat_models import get_model
 from email_agent.assistant.interpreter import (
     assistant_route,
     interpret_assistant_request,
 )
 from email_agent.assistant.models import AssistantIntentOutput, PendingAction
 from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
+from email_agent.llm.chat import get_model
 
 
 def assistant_target(model) -> Callable[[dict], dict]:

@@ -24,8 +24,7 @@ def test_short_known_name_does_not_redact_part_of_another_word():
 
 def test_sensitive_identifiers_and_urls_are_replaced():
     result = redact(
-        "SSN 123-45-6789 account: 92844102 "
-        "https://example.com/reset?token=secret-value"
+        "SSN 123-45-6789 account: 92844102 https://example.com/reset?token=secret-value"
     )
 
     assert "123-45-6789" not in result.sanitized_text

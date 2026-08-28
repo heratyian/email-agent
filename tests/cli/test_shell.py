@@ -9,9 +9,7 @@ from email_agent.cli.shell import InteractiveShell, ShellSession
 
 class FakeHandlers:
     def __init__(self, accounts=None):
-        self._accounts = accounts or {
-            "person@example.com": SimpleNamespace(provider="gmail")
-        }
+        self._accounts = accounts or {"person@example.com": SimpleNamespace(provider="gmail")}
 
     def accounts(self):
         return self._accounts
@@ -94,7 +92,9 @@ def test_service_failure_returns_to_prompt(capsys):
 
 def test_eof_exits_cleanly():
     shell = InteractiveShell(
-        ShellSession(None), FakeHandlers(), prompt=lambda *args, **kwargs: (_ for _ in ()).throw(EOFError)
+        ShellSession(None),
+        FakeHandlers(),
+        prompt=lambda *args, **kwargs: (_ for _ in ()).throw(EOFError),
     )
 
     shell.run()

@@ -1,8 +1,8 @@
 import logging
 
-from email_agent.ai.tracing import trace_payload
 from email_agent.cli.logging import ColorLogFormatter, configure_logging, warn_model_tracing
 from email_agent.diagnostics import configure_model_tracing, model_tracing_enabled
+from email_agent.llm.tracing import trace_payload
 
 
 def test_verbose_levels_filter_application_logs(capsys):

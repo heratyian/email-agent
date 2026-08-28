@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from email_agent.ai.outputs import TriageOutput
 from email_agent.evaluations.triage import (
     category_accuracy,
     ensure_dataset,
@@ -15,6 +14,7 @@ from email_agent.evaluations.triage import (
     triage_target,
     validate_reference_categories,
 )
+from email_agent.triage.models import TriageOutput
 
 
 class FakeAgents:
@@ -146,9 +146,7 @@ def test_new_dataset_is_assigned_to_application():
 def test_evaluation_uses_profile_without_account_settings(monkeypatch):
     client = FakeClient(exists=False)
     triager = FakeAgents()
-    monkeypatch.setattr(
-        "email_agent.evaluations.triage.get_model", lambda model: "model"
-    )
+    monkeypatch.setattr("email_agent.evaluations.triage.get_model", lambda model: "model")
     monkeypatch.setattr(
         "email_agent.evaluations.triage.EmailTriager",
         lambda root, agent, model: triager,

@@ -33,8 +33,7 @@ def configure_logging(verbosity: int) -> None:
     logger.handlers.clear()
     handler = logging.StreamHandler(sys.stderr)
     use_color = (
-        bool(getattr(handler.stream, "isatty", lambda: False)())
-        and "NO_COLOR" not in os.environ
+        bool(getattr(handler.stream, "isatty", lambda: False)()) and "NO_COLOR" not in os.environ
     )
     handler.setFormatter(ColorLogFormatter(use_color=use_color))
     logger.addHandler(handler)

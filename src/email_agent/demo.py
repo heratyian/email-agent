@@ -11,7 +11,7 @@ import yaml
 from faker import Faker
 
 from email_agent.config import Settings
-from email_agent.db import Message, initialize_database
+from email_agent.persistence import Message, initialize_database
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.models import EmailMessage, EmailThread
 
@@ -163,7 +163,9 @@ def _fake_message(fake: Faker, index: int, received_at: datetime) -> EmailMessag
     elif scenario == 3:
         sender = fake.company()
         subject = f"Payment receipt #{fake.random_int(10000, 99999)}"
-        body = f"We received your payment of ${fake.random_int(100, 900)}.00. No action is required."
+        body = (
+            f"We received your payment of ${fake.random_int(100, 900)}.00. No action is required."
+        )
     elif scenario == 4:
         sender = f"{fake.word().title()} Engineering Weekly"
         subject = "This week in reliable systems"

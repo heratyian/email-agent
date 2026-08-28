@@ -116,7 +116,7 @@ embedded again. The read-only `/search` workflow only searches the existing inde
 ## Conversational graph
 
 Plain text in the interactive shell runs through a constrained LangGraph. A
-structured intent selects one LangChain tool backed by the same command handlers
+structured intent selects one LangChain tool backed by the same application façade
 as the slash commands. Read operations execute directly. Triage and mailbox draft
 upload enter a pending state and execute only after a separate confirmation turn.
 The application never exposes a send-email tool.

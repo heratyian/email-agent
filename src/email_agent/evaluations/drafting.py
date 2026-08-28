@@ -9,11 +9,11 @@ from typing import Any
 from langsmith import Client
 from pydantic import BaseModel
 
-from email_agent.ai.chat_models import get_model
-from email_agent.ai.drafter import EmailDrafter
-from email_agent.ai.outputs import TriageOutput
+from email_agent.drafting.drafter import EmailDrafter
 from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
+from email_agent.llm.chat import get_model
 from email_agent.providers.models import EmailMessage, EmailThread
+from email_agent.triage.models import TriageOutput
 
 
 class DraftQualityScore(BaseModel):

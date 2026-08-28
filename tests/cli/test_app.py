@@ -14,7 +14,7 @@ cli = importlib.import_module("email_agent.cli.app")
 def test_cli_loads_project_env_before_running_a_command(monkeypatch):
     loaded = []
     monkeypatch.setattr(cli, "load_dotenv", lambda path, override: loaded.append((path, override)))
-    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
+    monkeypatch.setattr(cli.EmailApplication, "accounts", lambda self: {})
 
     result = runner.invoke(app, ["account"])
 
@@ -58,7 +58,7 @@ def test_top_level_help_presents_the_user_workflows():
 def test_verbose_flag_is_accepted_anywhere(monkeypatch, arguments, level):
     configured = []
     monkeypatch.setattr(cli, "configure_logging", configured.append)
-    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
+    monkeypatch.setattr(cli.EmailApplication, "accounts", lambda self: {})
 
     result = runner.invoke(app, arguments)
 
@@ -70,7 +70,7 @@ def test_verbose_flag_is_accepted_anywhere(monkeypatch, arguments, level):
 def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     configured = []
     monkeypatch.setattr(cli, "configure_model_tracing", configured.append)
-    monkeypatch.setattr(cli.CommandHandlers, "accounts", lambda self: {})
+    monkeypatch.setattr(cli.EmailApplication, "accounts", lambda self: {})
 
     result = runner.invoke(app, arguments)
 
@@ -113,7 +113,7 @@ def test_diagnostic_flags_are_global_for_every_command(command, flag):
 
 def test_account_without_subcommand_lists_accounts(monkeypatch):
     monkeypatch.setattr(
-        cli.CommandHandlers,
+        cli.EmailApplication,
         "accounts",
         lambda self: {"person@example.com": SimpleNamespace(provider="gmail")},
     )
@@ -126,7 +126,7 @@ def test_account_without_subcommand_lists_accounts(monkeypatch):
 
 def test_single_account_can_be_used_without_account_option(monkeypatch):
     monkeypatch.setattr(
-        cli.CommandHandlers,
+        cli.EmailApplication,
         "accounts",
         lambda self: {"person@example.com": SimpleNamespace(provider="gmail")},
     )
@@ -136,7 +136,7 @@ def test_single_account_can_be_used_without_account_option(monkeypatch):
 
 def test_multiple_accounts_require_an_explicit_account(monkeypatch):
     monkeypatch.setattr(
-        cli.CommandHandlers,
+        cli.EmailApplication,
         "accounts",
         lambda self: {
             "one@example.com": SimpleNamespace(provider="gmail"),
@@ -176,8 +176,8 @@ def test_demo_inbox_reads_a_stable_newest_first_synthetic_mailbox(tmp_path, monk
     assert "provider: demo" in account_text
     assert "provider: openai" in account_text
 
-    from email_agent.db import Message
     from email_agent.demo import DemoProvider
+    from email_agent.persistence import Message
 
     assert Message.select().where(Message.account_id == "demo@example.test").count() == 2
     messages = DemoProvider("demo@example.test", tmp_path).get_messages()
@@ -210,7 +210,7 @@ def test_nested_commands_are_discoverable():
 
 
 def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
-    from email_agent.db import Draft
+    from email_agent.persistence import Draft
 
     class Handlers:
         def list_drafts(self, account):
@@ -233,7 +233,7 @@ def test_draft_review_shows_original_message_and_suggested_reply(monkeypatch):
                 content="Original email body.",
             )
 
-    monkeypatch.setattr(cli, "CommandHandlers", Handlers)
+    monkeypatch.setattr(cli, "EmailApplication", Handlers)
 
     result = runner.invoke(app, ["drafts", "review"], input="q\n")
 

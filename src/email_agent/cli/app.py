@@ -7,7 +7,13 @@ import typer
 from dotenv import load_dotenv
 from typer.core import TyperGroup
 
-from email_agent.cli.commands import CommandHandlers
+from email_agent.accounts.generator import (
+    AccountProvider,
+    AgentTemplate,
+    CategoryAction,
+    ModelProvider,
+)
+from email_agent.application import EmailApplication
 from email_agent.cli.logging import configure_logging, warn_model_tracing
 from email_agent.cli.rendering import (
     render_draft,
@@ -20,12 +26,6 @@ from email_agent.cli.rendering import (
 )
 from email_agent.config import PROJECT_ROOT, Settings
 from email_agent.diagnostics import configure_model_tracing
-from email_agent.generators import (
-    AccountProvider,
-    AgentTemplate,
-    CategoryAction,
-    ModelProvider,
-)
 
 
 class GlobalOptionsAnywhereGroup(TyperGroup):
@@ -108,7 +108,7 @@ def main(
 
 def _account_id(requested: str | None) -> str:
     """Resolve an optional account when exactly one mailbox is configured."""
-    accounts = CommandHandlers().accounts()
+    accounts = EmailApplication().accounts()
     if requested:
         if requested not in accounts:
             raise typer.BadParameter(f"Unknown account '{requested}'")
@@ -129,7 +129,7 @@ def account(typer_context: typer.Context):
 
 def list_accounts():
     """Render configured accounts without connecting to them."""
-    for account_id, account in CommandHandlers().accounts().items():
+    for account_id, account in EmailApplication().accounts().items():
         typer.echo(f"{account_id}: {account.provider}")
 
 
@@ -160,7 +160,7 @@ def add_account(
 ):
     """Create or add a mailbox account in the private accounts.yaml file."""
     try:
-        generated = CommandHandlers().create_account(
+        generated = EmailApplication().create_account(
             email,
             provider,
             template,
@@ -196,7 +196,7 @@ def add_account(
 def validate_config():
     """Validate mailbox accounts, model settings, categories, and prompts."""
     try:
-        account_ids = CommandHandlers().validate_accounts()
+        account_ids = EmailApplication().validate_accounts()
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     for account_id in account_ids:
@@ -224,12 +224,12 @@ def inbox(
         raise typer.BadParameter("interval must be at least 30 seconds")
     try:
         while True:
-            result = CommandHandlers().run_inbox(
+            items = EmailApplication().run_inbox(
                 account_id,
                 limit,
                 unread=unread,
             )
-            render_inbox_items(result.items)
+            render_inbox_items(items)
             if not watch:
                 break
             typer.echo(f"\nWatching every {interval}s. Ctrl-C to stop.")
@@ -246,7 +246,7 @@ def search(
     """Search synchronized and triaged local mail using natural language."""
     account_id = _account_id(account)
     try:
-        response = CommandHandlers().search_inbox(account_id, query)
+        response = EmailApplication().search_inbox(account_id, query)
     except (RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     render_inbox_search_response(response)
@@ -267,7 +267,7 @@ def demo():
     typer.echo("Try /inbox, /triage, /search, /draft, /review, and /upload.\n")
     run_shell(
         account_id=DEMO_ACCOUNT_ID,
-        handlers=CommandHandlers(Settings(PROJECT_ROOT)),
+        handlers=EmailApplication(Settings(PROJECT_ROOT)),
     )
 
 
@@ -281,7 +281,7 @@ def triage(
     """Triage messages and synchronize their managed mailbox labels."""
     account_id = _account_id(account)
     try:
-        results = CommandHandlers().triage(
+        results = EmailApplication().triage(
             account_id,
             message_id=message_id,
         )
@@ -363,7 +363,7 @@ def drafts(typer_context: typer.Context, account: Annotated[str | None, typer.Op
     """Review and upload suggested replies."""
     if typer_context.invoked_subcommand is not None:
         return
-    handlers = CommandHandlers()
+    handlers = EmailApplication()
     if account:
         handlers.validate_account(account)
     rows = handlers.list_drafts(account)
@@ -378,7 +378,7 @@ def drafts(typer_context: typer.Context, account: Annotated[str | None, typer.Op
 def show_message(message_id: int):
     """Retrieve and show a mailbox message using its local database ID."""
     try:
-        details = CommandHandlers().show_message(message_id)
+        details = EmailApplication().show_message(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     render_message_details(details)
@@ -388,7 +388,7 @@ def show_message(message_id: int):
 def show_draft(message_id: int):
     """Show the local draft associated with a processed message."""
     try:
-        row = CommandHandlers().show_draft(message_id)
+        row = EmailApplication().show_draft(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     render_draft(row)
@@ -403,7 +403,7 @@ def generate(
 ):
     """Generate or regenerate a reply suggestion for one message."""
     try:
-        draft = CommandHandlers().generate_draft(message_id, instruction)
+        draft = EmailApplication().generate_draft(message_id, instruction)
     except (LookupError, RuntimeError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho(f"✓ Draft ready for message #{message_id}.", fg=typer.colors.GREEN, bold=True)
@@ -415,7 +415,7 @@ def generate(
 def upload(message_id: int):
     """Upload a suggestion to the mailbox Drafts folder without sending."""
     try:
-        CommandHandlers().upload_draft(message_id)
+        EmailApplication().upload_draft(message_id)
     except (LookupError, RuntimeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho(
@@ -427,7 +427,7 @@ def upload(message_id: int):
 def delete_draft(message_id: int):
     """Delete a local draft suggestion without changing the mailbox."""
     try:
-        CommandHandlers().delete_draft(message_id)
+        EmailApplication().delete_draft(message_id)
     except LookupError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho("✓ Deleted draft suggestion.", fg=typer.colors.GREEN, bold=True)
@@ -436,7 +436,7 @@ def delete_draft(message_id: int):
 @drafts_app.command()
 def review(account: Annotated[str | None, typer.Option()] = None):
     """Cycle through draft suggestions and upload, delete, keep, or quit."""
-    handlers = CommandHandlers()
+    handlers = EmailApplication()
     if account:
         handlers.validate_account(account)
     rows = handlers.list_drafts(account)

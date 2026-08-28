@@ -33,7 +33,7 @@ particular:
 Run the narrowest useful test while developing:
 
 ```bash
-uv run pytest tests/services/test_triage_inbox_and_routing.py
+uv run pytest tests/triage/test_workflow.py
 uv run pytest tests/cli/test_shell.py
 ```
 
@@ -50,7 +50,7 @@ comments, and files.
 
 ## Database changes
 
-Update the Peewee models and `src/email_agent/db/schema.sql` together. Delete
+Update the Peewee models and `src/email_agent/persistence/schema.sql` together. Delete
 `data/email_agent.db` after a schema change so the application creates the current
 schema. The email provider remains the source of truth, but deleting the database
 also deletes local triages and draft suggestions.

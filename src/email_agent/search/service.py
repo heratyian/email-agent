@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from email_agent.ai.embeddings import get_embedding_model
 from email_agent.config import AccountConfig, Settings
+from email_agent.llm.embeddings import get_embedding_model
 from email_agent.search.models import InboxSearchResponse
 from email_agent.search.pipeline import run_inbox_search
-from email_agent.search.tools import make_search_tools
+from email_agent.search.retrieval import make_search_tools
 
 
 class InboxSearchService:

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from email_agent.ai.outputs import DraftOutput
+from email_agent.drafting.models import DraftOutput
 from email_agent.evaluations.drafting import (
     DraftQualityScore,
     draft_quality_evaluator,

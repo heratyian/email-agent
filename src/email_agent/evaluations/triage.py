@@ -12,10 +12,10 @@ from typing import Any
 import yaml
 from langsmith import Client
 
-from email_agent.ai.chat_models import get_model
-from email_agent.ai.triager import EmailTriager
 from email_agent.config import AgentConfig
+from email_agent.llm.chat import get_model
 from email_agent.providers.models import EmailMessage, EmailThread
+from email_agent.triage.triager import EmailTriager
 
 PROFILES_ROOT = Path(__file__).with_name("profiles")
 
@@ -93,8 +93,7 @@ def validate_reference_categories(examples: list[dict], categories: dict[str, st
     )
     if unknown:
         raise ValueError(
-            "evaluation dataset contains categories missing from the profile: "
-            + ", ".join(unknown)
+            "evaluation dataset contains categories missing from the profile: " + ", ".join(unknown)
         )
 
 
@@ -151,9 +150,7 @@ def run_triage_evaluation(
         profile.examples,
         application_tag_value_id=os.getenv("LANGSMITH_APPLICATION_TAG_VALUE_ID"),
     )
-    triager = EmailTriager(
-        profile.root, profile.agent, get_model(profile.agent.model)
-    )
+    triager = EmailTriager(profile.root, profile.agent, get_model(profile.agent.model))
     return client.evaluate(
         triage_target(triager),
         data=dataset_name,

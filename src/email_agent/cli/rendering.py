@@ -1,11 +1,11 @@
 import typer
 from wcwidth import wcswidth, wcwidth
 
-from email_agent.db import Draft
+from email_agent.inbox.messages import MessageDetails
+from email_agent.persistence import Draft
 from email_agent.providers.models import EmailMessage
 from email_agent.search.models import InboxSearchResponse
-from email_agent.services import TriageFailure
-from email_agent.services.messages import MessageDetails
+from email_agent.triage.workflow import TriageFailure
 
 INBOX_COLUMNS = (
     ("ID", 6),
@@ -146,10 +146,7 @@ def render_inbox_search_response(response: InboxSearchResponse) -> None:
             result.match_explanation or result.summary,
         )
         typer.secho(
-            "  ".join(
-                _cell(value, width)
-                for value, (_, width) in zip(values, SEARCH_COLUMNS)
-            ),
+            "  ".join(_cell(value, width) for value, (_, width) in zip(values, SEARCH_COLUMNS)),
             fg=priority_color(priority),
         )
 
