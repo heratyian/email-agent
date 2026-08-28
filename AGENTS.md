@@ -25,7 +25,8 @@ Follow the [Ruby on Rails Doctrine](https://rubyonrails.org/doctrine), adapted t
 
 ## Architecture
 
-- Follow architectural best practices.
+- Follow architectural best practices. Aim for simplicity and predictable patterns.
+- Rich Domain Model. Put business logic directly inside models rather than creating separate, abstract service objects. (Domain Driven Design)
 - Follow existing structure and reuse existing abstractions. Suggest refactors when it  improves human readability and/or performance.
 - Keep this a single understandable Python application.
 - It's preferable to use a library than roll our own solution to a solved problem. Reuse dependencies when possible. Add dependencies when it meaningfully reduces complexity.
