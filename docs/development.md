@@ -142,3 +142,22 @@ Add sanitized regression cases to `search_examples.json`. Add a message to
 `search_corpus.json` only when the scenario needs evidence that is not already in
 the corpus. Use a new dataset name after changing examples because existing
 LangSmith datasets are not overwritten automatically.
+
+## Assistant orchestration evaluation
+
+Run the production structured-intent interpreter against synthetic shell turns:
+
+```bash
+uv run email-agent evaluate assistant --profile personal
+```
+
+The `assistant-personal` dataset covers routing, message-reference resolution,
+argument extraction, confirmation requirements, confirmation and cancellation
+turns, ambiguous references, and unsupported destructive requests. It does not
+execute tools or access a mailbox. This keeps failures attributable to the
+orchestration layer instead of provider, retrieval, or generation behavior.
+
+The LangSmith experiment reports action, graph route, message reference,
+argument, and confirmation-policy accuracy separately. Add sanitized routing
+regressions to `assistant_examples.json`. Use a new dataset name after changing
+examples because existing LangSmith datasets are not overwritten automatically.

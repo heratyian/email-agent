@@ -66,9 +66,7 @@ def test_verbose_flag_is_accepted_anywhere(monkeypatch, arguments, level):
     assert configured[-1] == level
 
 
-@pytest.mark.parametrize(
-    "arguments", [["--trace-model", "account"], ["account", "--trace-model"]]
-)
+@pytest.mark.parametrize("arguments", [["--trace-model", "account"], ["account", "--trace-model"]])
 def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
     configured = []
     monkeypatch.setattr(cli, "configure_model_tracing", configured.append)
@@ -99,6 +97,7 @@ def test_trace_model_flag_is_accepted_anywhere(monkeypatch, arguments):
         ["account", "add"],
         ["account", "validate"],
         ["evaluate"],
+        ["evaluate", "assistant"],
         ["evaluate", "triage"],
         ["evaluate", "drafting"],
         ["evaluate", "search"],
@@ -201,7 +200,7 @@ def test_nested_commands_are_discoverable():
     expectations = {
         "account": ("add", "validate"),
         "drafts": ("show", "generate", "review", "upload", "delete"),
-        "evaluate": ("triage", "drafting", "search"),
+        "evaluate": ("assistant", "triage", "drafting", "search"),
         "message": ("show",),
     }
     for group, commands in expectations.items():

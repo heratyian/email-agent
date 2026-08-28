@@ -105,6 +105,7 @@ def main(
 
         run_shell(verbosity=verbose, trace_model=trace_model)
 
+
 def _account_id(requested: str | None) -> str:
     """Resolve an optional account when exactly one mailbox is configured."""
     accounts = CommandHandlers().accounts()
@@ -186,10 +187,7 @@ def add_account(
         typer.echo("Place the OAuth client JSON at the generated credentials_file path.")
     else:
         typer.echo("Set the generated username and password environment variables in .env.")
-    typer.secho(
-        "Created triage prompt: "
-        f"{generated.triage_prompt.relative_to(PROJECT_ROOT)}"
-    )
+    typer.secho(f"Created triage prompt: {generated.triage_prompt.relative_to(PROJECT_ROOT)}")
     typer.secho(f"Created draft prompt: {generated.draft_prompt.relative_to(PROJECT_ROOT)}")
     typer.echo(f"\nNext: email-agent inbox --account {email}")
 
@@ -217,9 +215,7 @@ def inbox(
     unread: Annotated[
         bool, typer.Option("--unread", help="Show only provider-unread messages.")
     ] = False,
-    watch: Annotated[
-        bool, typer.Option("--watch", help="Keep checking for new messages.")
-    ] = False,
+    watch: Annotated[bool, typer.Option("--watch", help="Keep checking for new messages.")] = False,
     interval: Annotated[int, typer.Option(help="Seconds between checks when watching.")] = 300,
 ):
     """Synchronize and show recent mail without using AI."""
@@ -266,9 +262,7 @@ def demo():
     action = "Created" if installation.account_created else "Loaded"
     typer.secho(f"{action} synthetic account {DEMO_ACCOUNT_ID}.", fg=typer.colors.GREEN, bold=True)
     mailbox_action = "Created" if installation.mailbox_created else "Loaded"
-    typer.echo(
-        f"{mailbox_action} a Faker mailbox with {installation.message_count} messages."
-    )
+    typer.echo(f"{mailbox_action} a Faker mailbox with {installation.message_count} messages.")
     typer.echo("Triage, drafting, and search use the configured OpenAI model.")
     typer.echo("Try /inbox, /triage, /search, /draft, /review, and /upload.\n")
     run_shell(
@@ -311,6 +305,23 @@ def evaluate_triage(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.secho("✓ Triage evaluation completed.", fg=typer.colors.GREEN, bold=True)
+
+
+@evaluate_app.command("assistant")
+def evaluate_assistant(
+    profile: Annotated[str, typer.Option(help="Checked-in evaluation profile.")] = "personal",
+    dataset: Annotated[
+        str | None, typer.Option(help="Override the LangSmith dataset name.")
+    ] = None,
+):
+    """Evaluate natural-language assistant routing and safety behavior."""
+    from email_agent.evaluations import run_assistant_evaluation
+
+    try:
+        run_assistant_evaluation(profile, dataset_name=dataset)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho("✓ Assistant evaluation completed.", fg=typer.colors.GREEN, bold=True)
 
 
 @evaluate_app.command("drafting")
@@ -407,7 +418,9 @@ def upload(message_id: int):
         CommandHandlers().upload_draft(message_id)
     except (LookupError, RuntimeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN, bold=True)
+    typer.secho(
+        "✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN, bold=True
+    )
 
 
 @drafts_app.command("delete")
@@ -437,11 +450,15 @@ def review(account: Annotated[str | None, typer.Option()] = None):
             render_review_item(row, None, str(exc))
         else:
             render_review_item(row, source, None)
-        choice = typer.prompt(
-            "[u] Upload  [d] Delete  [k] Keep  [q] Quit",
-            default="k",
-            show_default=False,
-        ).strip().lower()
+        choice = (
+            typer.prompt(
+                "[u] Upload  [d] Delete  [k] Keep  [q] Quit",
+                default="k",
+                show_default=False,
+            )
+            .strip()
+            .lower()
+        )
         if choice in {"q", "quit"}:
             break
         if choice in {"u", "upload"}:
@@ -450,7 +467,9 @@ def review(account: Annotated[str | None, typer.Option()] = None):
             except (LookupError, RuntimeError) as exc:
                 typer.secho(f"Upload failed: {exc}", fg=typer.colors.RED)
             else:
-                typer.secho("✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN)
+                typer.secho(
+                    "✓ Uploaded to mailbox drafts. No email was sent.", fg=typer.colors.GREEN
+                )
         elif choice in {"d", "delete"}:
             handlers.delete_draft(row.message_id)
             typer.secho("✓ Deleted suggestion.", fg=typer.colors.GREEN)

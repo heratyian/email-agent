@@ -121,6 +121,9 @@ as the slash commands. Read operations execute directly. Triage and mailbox draf
 upload enter a pending state and execute only after a separate confirmation turn.
 The application never exposes a send-email tool.
 
+Evaluate its typed intent routing and confirmation policy with
+`uv run email-agent evaluate assistant --profile personal`.
+
 ```mermaid
 flowchart TD
     A[User text] --> B[Interpret typed intent]

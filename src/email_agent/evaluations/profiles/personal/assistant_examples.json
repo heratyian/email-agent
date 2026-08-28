@@ -1,0 +1,74 @@
+[
+  {
+    "inputs": {"user_input": "Fetch my five newest messages."},
+    "outputs": {"action": "inbox", "route": "inbox", "limit": 5, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "What important messages need a reply?"},
+    "outputs": {"action": "search", "route": "search", "query_present": true, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Show message 42."},
+    "outputs": {"action": "show", "route": "show", "message_id": 42, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Show that message.", "last_message_ids": [42]},
+    "outputs": {"action": "show", "route": "show", "message_id": 42, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Show that message.", "last_message_ids": [41, 42]},
+    "outputs": {"action": "unsupported", "route": "unsupported", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Triage all pending messages."},
+    "outputs": {"action": "triage", "route": "prepare_triage", "message_id": null, "requires_confirmation": true}
+  },
+  {
+    "inputs": {"user_input": "Triage message 42."},
+    "outputs": {"action": "triage", "route": "prepare_triage", "message_id": 42, "requires_confirmation": true}
+  },
+  {
+    "inputs": {"user_input": "Draft a concise reply to message 42."},
+    "outputs": {"action": "draft", "route": "draft", "message_id": 42, "instruction_present": true, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Draft a reply to the message from Maya."},
+    "outputs": {"action": "draft", "route": "draft", "query_present": true, "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "List my draft suggestions."},
+    "outputs": {"action": "drafts", "route": "drafts", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Upload draft 42."},
+    "outputs": {"action": "upload", "route": "prepare_upload", "message_id": 42, "requires_confirmation": true}
+  },
+  {
+    "inputs": {"user_input": "Upload that draft.", "last_draft_message_id": 42},
+    "outputs": {"action": "upload", "route": "prepare_upload", "message_id": 42, "requires_confirmation": true}
+  },
+  {
+    "inputs": {"user_input": "Send that reply now.", "last_draft_message_id": 42},
+    "outputs": {"action": "unsupported", "route": "unsupported", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Delete every message in my inbox."},
+    "outputs": {"action": "unsupported", "route": "unsupported", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Switch to my work account."},
+    "outputs": {"action": "unsupported", "route": "unsupported", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "yes", "pending_action": {"action": "upload", "message_id": 42}},
+    "outputs": {"route": "confirm", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "cancel", "pending_action": {"action": "triage", "message_id": null}},
+    "outputs": {"route": "cancel", "requires_confirmation": false}
+  },
+  {
+    "inputs": {"user_input": "Fetch my inbox instead.", "pending_action": {"action": "triage", "message_id": null}},
+    "outputs": {"action": "unsupported", "route": "unsupported", "requires_confirmation": false}
+  }
+]
