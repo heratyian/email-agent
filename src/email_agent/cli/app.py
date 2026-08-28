@@ -330,6 +330,23 @@ def evaluate_drafting(
     typer.secho("✓ Drafting evaluation completed.", fg=typer.colors.GREEN, bold=True)
 
 
+@evaluate_app.command("search")
+def evaluate_search(
+    profile: Annotated[str, typer.Option(help="Checked-in evaluation profile.")] = "personal",
+    dataset: Annotated[
+        str | None, typer.Option(help="Override the LangSmith dataset name.")
+    ] = None,
+):
+    """Evaluate the production inbox search graph and RAG pipeline."""
+    from email_agent.evaluations import run_search_evaluation
+
+    try:
+        run_search_evaluation(profile, dataset_name=dataset)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.secho("✓ Search evaluation completed.", fg=typer.colors.GREEN, bold=True)
+
+
 @drafts_app.callback()
 def drafts(typer_context: typer.Context, account: Annotated[str | None, typer.Option()] = None):
     """Review and upload suggested replies."""

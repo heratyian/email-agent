@@ -118,3 +118,27 @@ scores for required content, grounding, instruction following, tone, and safety.
 Drafting examples define required and forbidden behavior instead of one exact
 reply. Keep examples synthetic. When a real draft fails, add a sanitized
 reconstruction with the corrected criteria and retain it as a regression case.
+
+## Inbox search evaluation
+
+Run the production LangGraph search workflow against a fixed synthetic mailbox:
+
+```bash
+uv run email-agent evaluate search --profile personal
+```
+
+The command creates a temporary SQLite database and Chroma index, seeds the
+checked-in classified corpus, and runs each query through the production graph.
+It uses the profile's chat and embedding model, so it requires the model API key.
+The temporary data is deleted after the blocking evaluation completes.
+
+The LangSmith experiment reports planner field accuracy, retrieval precision and
+recall, first-result accuracy, excluded-result accuracy, citation validity,
+citation recall, and correct no-result behavior. Message keys in the dataset are
+stable across database runs. The evaluation runs one example at a time because
+all examples share the same temporary local index.
+
+Add sanitized regression cases to `search_examples.json`. Add a message to
+`search_corpus.json` only when the scenario needs evidence that is not already in
+the corpus. Use a new dataset name after changing examples because existing
+LangSmith datasets are not overwritten automatically.

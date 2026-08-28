@@ -1,0 +1,69 @@
+[
+  {
+    "inputs": {"query": "Which messages need a reply?"},
+    "outputs": {
+      "plan": {"requires_reply": true},
+      "relevant_keys": ["security_credentials", "vendor_invoice", "interview_schedule"],
+      "excluded_keys": ["weekly_digest", "purchase_receipt"]
+    }
+  },
+  {
+    "inputs": {"query": "Find the message about exposed production credentials."},
+    "outputs": {
+      "relevant_keys": ["security_credentials"],
+      "top_key": "security_credentials",
+      "excluded_keys": ["weekly_digest", "prize_spam"]
+    }
+  },
+  {
+    "inputs": {"query": "What overdue invoice has a Friday deadline?"},
+    "outputs": {
+      "relevant_keys": ["vendor_invoice"],
+      "top_key": "vendor_invoice",
+      "excluded_keys": ["purchase_receipt"]
+    }
+  },
+  {
+    "inputs": {"query": "Show email from recruiter@example.test."},
+    "outputs": {
+      "plan": {"sender": "recruiter@example.test"},
+      "relevant_keys": ["interview_schedule"],
+      "top_key": "interview_schedule",
+      "excluded_keys": ["weekly_digest"]
+    }
+  },
+  {
+    "inputs": {"query": "Show my newsletters."},
+    "outputs": {
+      "plan": {"category": "newsletters"},
+      "relevant_keys": ["weekly_digest"],
+      "top_key": "weekly_digest",
+      "excluded_keys": ["prize_spam"]
+    }
+  },
+  {
+    "inputs": {"query": "Where is the API pagination documentation update?"},
+    "outputs": {
+      "relevant_keys": ["api_reference"],
+      "top_key": "api_reference",
+      "excluded_keys": ["weekly_digest"]
+    }
+  },
+  {
+    "inputs": {"query": "What is the most urgent message?"},
+    "outputs": {
+      "plan": {"priority": "urgent"},
+      "relevant_keys": ["security_credentials"],
+      "top_key": "security_credentials",
+      "excluded_keys": ["weekly_digest", "prize_spam"]
+    }
+  },
+  {
+    "inputs": {"query": "Show messages from nobody@example.test."},
+    "outputs": {
+      "plan": {"sender": "nobody@example.test"},
+      "relevant_keys": [],
+      "excluded_keys": ["security_credentials", "vendor_invoice", "interview_schedule", "office_closed", "api_reference", "weekly_digest", "purchase_receipt", "prize_spam"]
+    }
+  }
+]

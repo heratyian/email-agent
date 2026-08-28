@@ -1,0 +1,155 @@
+[
+  {
+    "key": "security_credentials",
+    "message": {
+      "from_address": "security@example.test",
+      "from_name": "Security Team",
+      "subject": "Exposed production credentials",
+      "text_body": "A production API key appeared in a public repository. Revoke it and confirm containment today.",
+      "received_days_ago": 1
+    },
+    "classification": {
+      "category": "action",
+      "requires_reply": true,
+      "priority": "urgent",
+      "intent": "Contain a credential exposure",
+      "summary": "Security found exposed production credentials that must be revoked today.",
+      "confidence": 0.99,
+      "requires_escalation": true,
+      "escalation_reason": "Production credentials are publicly exposed."
+    }
+  },
+  {
+    "key": "vendor_invoice",
+    "message": {
+      "from_address": "billing@vendor.example.test",
+      "from_name": "Northstar Billing",
+      "subject": "Overdue invoice requires approval",
+      "text_body": "Invoice 4815 is overdue. Please approve the payment by Friday to avoid a service interruption.",
+      "received_days_ago": 3
+    },
+    "classification": {
+      "category": "action",
+      "requires_reply": true,
+      "priority": "high",
+      "intent": "Request approval of an overdue invoice",
+      "summary": "Northstar needs approval of an overdue invoice by Friday.",
+      "confidence": 0.98,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "interview_schedule",
+    "message": {
+      "from_address": "recruiter@example.test",
+      "from_name": "Maya Chen",
+      "subject": "Interview availability next week",
+      "text_body": "Can you send two times when you are available for the final interview next week?",
+      "received_days_ago": 2
+    },
+    "classification": {
+      "category": "action",
+      "requires_reply": true,
+      "priority": "normal",
+      "intent": "Schedule a final interview",
+      "summary": "A recruiter asks for two available final-interview times next week.",
+      "confidence": 0.97,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "office_closed",
+    "message": {
+      "from_address": "people@example.test",
+      "from_name": "People Operations",
+      "subject": "Office closed Monday",
+      "text_body": "The office is closed Monday for the holiday. Normal hours resume Tuesday.",
+      "received_days_ago": 5
+    },
+    "classification": {
+      "category": "important",
+      "requires_reply": false,
+      "priority": "normal",
+      "intent": "Announce an office closure",
+      "summary": "The office is closed Monday and reopens Tuesday.",
+      "confidence": 0.99,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "api_reference",
+    "message": {
+      "from_address": "docs@example.test",
+      "from_name": "Developer Documentation",
+      "subject": "Pagination reference updated",
+      "text_body": "The API reference now explains cursor pagination and retry behavior.",
+      "received_days_ago": 20
+    },
+    "classification": {
+      "category": "reference",
+      "requires_reply": false,
+      "priority": "low",
+      "intent": "Share API documentation changes",
+      "summary": "The API reference documents cursor pagination and retries.",
+      "confidence": 0.98,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "weekly_digest",
+    "message": {
+      "from_address": "digest@example.test",
+      "from_name": "Engineering Weekly",
+      "subject": "Weekly engineering digest",
+      "text_body": "This week includes Python releases, database articles, and conference links.",
+      "received_days_ago": 1
+    },
+    "classification": {
+      "category": "newsletters",
+      "requires_reply": false,
+      "priority": "low",
+      "intent": "Share a recurring engineering newsletter",
+      "summary": "A weekly digest covers Python, databases, and conferences.",
+      "confidence": 0.99,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "purchase_receipt",
+    "message": {
+      "from_address": "receipts@example.test",
+      "from_name": "Acme Store",
+      "subject": "Receipt for order 1048",
+      "text_body": "Payment of $42.00 was received. No action is required.",
+      "received_days_ago": 4
+    },
+    "classification": {
+      "category": "receipts",
+      "requires_reply": false,
+      "priority": "low",
+      "intent": "Confirm a purchase payment",
+      "summary": "Acme confirms payment of $42 for order 1048.",
+      "confidence": 0.99,
+      "requires_escalation": false
+    }
+  },
+  {
+    "key": "prize_spam",
+    "message": {
+      "from_address": "offers@example.test",
+      "from_name": "Prize Center",
+      "subject": "Claim your guaranteed prize",
+      "text_body": "Act now to claim a guaranteed prize before this offer expires.",
+      "received_days_ago": 1
+    },
+    "classification": {
+      "category": "noise",
+      "requires_reply": false,
+      "priority": "low",
+      "intent": "Promote a deceptive prize offer",
+      "summary": "An unsolicited offer claims the recipient won a prize.",
+      "confidence": 0.99,
+      "requires_escalation": false
+    }
+  }
+]
