@@ -58,6 +58,7 @@ class InteractiveShell:
             return
         typer.echo(f"Account: {self.session.account_id}")
         typer.echo("Type /help for commands.\n")
+        typer.echo("What should we work on?\n")
         while True:
             try:
                 line = self.prompt(">", prompt_suffix=" ", default="", show_default=False)
