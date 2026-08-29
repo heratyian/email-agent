@@ -82,7 +82,7 @@ def test_inbox_assigns_local_ids_without_triaging_or_changing_mailbox(tmp_path):
 
     assert items[0].local_id > 0
     assert items[0].triage is None
-    assert items[0].draft_ready is False
+    assert items[0].draft_status is None
     assert Message.get_by_id(items[0].local_id).provider_message_id == "abc"
     assert Message.get_by_id(items[0].local_id).text_body == "I cannot log in"
     assert provider.message_queries == [(20, True)]

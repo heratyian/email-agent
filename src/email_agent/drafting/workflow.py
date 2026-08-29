@@ -2,7 +2,7 @@ import logging
 
 from email_agent.config import Settings
 from email_agent.drafting.drafter import EmailDrafter
-from email_agent.persistence import Draft, Message
+from email_agent.persistence import Draft, DraftStatus, Message
 from email_agent.providers import create_mail_provider
 from email_agent.providers.base import MailProvider
 from email_agent.providers.models import EmailMessage
@@ -67,7 +67,7 @@ class DraftService:
             subject=reply_subject(source.subject),
             body=draft.body,
         )
-        if not Draft.change_generated_status(message_id, "uploaded"):
+        if not Draft.change_generated_status(message_id, DraftStatus.UPLOADED):
             raise LookupError("draft not found")
         logger.info("Uploaded draft for local message %s", message_id)
         return provider_id

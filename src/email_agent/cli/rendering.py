@@ -2,7 +2,7 @@ import typer
 from wcwidth import wcswidth, wcwidth
 
 from email_agent.inbox.messages import MessageDetails
-from email_agent.persistence import Draft
+from email_agent.persistence import Draft, DraftStatus
 from email_agent.providers.models import EmailMessage
 from email_agent.search.models import InboxSearchResponse
 from email_agent.triage.workflow import TriageFailure
@@ -15,7 +15,7 @@ INBOX_COLUMNS = (
     ("CATEGORY", 24),
     ("TRIAGE", 9),
     ("REPLY?", 6),
-    ("DRAFT?", 7),
+    ("DRAFT?", 8),
 )
 
 SEARCH_COLUMNS = (
@@ -87,7 +87,7 @@ def inbox_table_row(
     category: str | None,
     needs_triage: bool,
     requires_reply: bool | None,
-    draft_ready: bool,
+    draft_status: DraftStatus | None,
     color: str | None = None,
 ) -> None:
     """Render one aligned inbox row with predictable user-facing fields."""
@@ -99,7 +99,10 @@ def inbox_table_row(
         category_name(category),
         "PENDING" if needs_triage else "DONE",
         "YES" if requires_reply else "NO" if requires_reply is False else "—",
-        "READY" if draft_ready else "—",
+        {
+            DraftStatus.GENERATED: "READY",
+            DraftStatus.UPLOADED: "UPLOADED",
+        }.get(draft_status, "—"),
     )
     typer.secho(
         "  ".join(_cell(value, width) for value, (_, width) in zip(values, INBOX_COLUMNS)),
@@ -123,7 +126,7 @@ def render_inbox_items(items) -> None:
             category=triage.category if triage else None,
             needs_triage=triage is None,
             requires_reply=triage.requires_reply if triage else None,
-            draft_ready=item.draft_ready,
+            draft_status=item.draft_status,
             color=priority_color(priority) if triage else None,
         )
 
@@ -169,7 +172,7 @@ def render_triage_results(results) -> int:
                 category=triage.category if triage else None,
                 needs_triage=triage is None,
                 requires_reply=triage.requires_reply if triage else None,
-                draft_ready=False,
+                draft_status=None,
                 color=typer.colors.RED,
             )
             continue
@@ -182,7 +185,7 @@ def render_triage_results(results) -> int:
             category=result.triage.category,
             needs_triage=False,
             requires_reply=result.triage.requires_reply,
-            draft_ready=result.draft_ready,
+            draft_status=result.draft_status,
             color=priority_color(result.triage.priority),
         )
     failures = len(results) - succeeded

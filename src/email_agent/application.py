@@ -10,7 +10,7 @@ from email_agent.drafting.workflow import DraftService
 from email_agent.inbox.messages import MessageDetails, MessageService
 from email_agent.inbox.workflow import InboxItem, InboxService
 from email_agent.llm.embeddings import get_embedding_model
-from email_agent.persistence import Draft, Message
+from email_agent.persistence import Draft, DraftStatus, Message
 from email_agent.providers.models import EmailMessage
 from email_agent.runtime import RuntimeFactory
 from email_agent.search import InboxSearchService
@@ -73,7 +73,7 @@ class EmailApplication:
         return DraftService().upload(message_id, self.settings)
 
     def delete_draft(self, message_id: int) -> None:
-        if not Draft.change_generated_status(message_id, "rejected"):
+        if not Draft.change_generated_status(message_id, DraftStatus.REJECTED):
             raise LookupError("draft not found")
 
     def source_message(self, message_id: int) -> EmailMessage:

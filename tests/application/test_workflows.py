@@ -5,7 +5,14 @@ from email_agent.config import Settings
 from email_agent.drafting.models import DraftOutput
 from email_agent.drafting.workflow import DraftService, reply_subject
 from email_agent.inbox.messages import MessageService
-from email_agent.persistence import Draft, Message, Triage, database, initialize_database
+from email_agent.persistence import (
+    Draft,
+    DraftStatus,
+    Message,
+    Triage,
+    database,
+    initialize_database,
+)
 from email_agent.providers.models import EmailMessage, EmailThread
 from email_agent.runtime import RuntimeFactory
 from email_agent.triage.models import TriageOutput
@@ -145,10 +152,28 @@ def test_draft_model_removes_suggestion_from_review_queue(tmp_path):
         ),
     )
 
-    Draft.change_generated_status(1, "rejected")
+    Draft.change_generated_status(1, DraftStatus.REJECTED)
 
     assert Draft.latest_for_message(1).status == "rejected"
     assert list(Draft.pending()) == []
+
+
+def test_draft_model_reports_uploaded_state_after_a_new_suggestion_is_rejected(tmp_path):
+    initialize_database(tmp_path / "email-agent.db")
+    stored = Message.upsert_email(message())
+    output = DraftOutput(
+        recipient="sender@example.com",
+        subject="Re: Question",
+        body="First reply.",
+        reasoning_summary="Reply.",
+        confidence=0.9,
+    )
+    Draft.replace_generated(stored, output)
+    Draft.change_generated_status(stored.id, DraftStatus.UPLOADED)
+    Draft.replace_generated(stored, output.model_copy(update={"body": "Second reply."}))
+    Draft.change_generated_status(stored.id, DraftStatus.REJECTED)
+
+    assert Draft.visible_status_for_message(stored.id) is DraftStatus.UPLOADED
 
 
 def test_draft_service_generates_and_replaces_local_suggestion(tmp_path):

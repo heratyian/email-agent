@@ -68,6 +68,11 @@ or prepare replies. Pass a positive limit to change the default batch size:
 > /inbox 10
 ```
 
+The `DRAFT?` column shows `READY` for a local suggestion waiting for review and
+`UPLOADED` after a suggestion has been copied to the mailbox Drafts folder.
+Rejected suggestions leave the column empty. Uploaded drafts do not return to the
+local review queue.
+
 ### Triage messages
 
 `/triage` processes all stored messages that do not have completed

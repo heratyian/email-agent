@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from email_agent.config import AgentConfig
-from email_agent.persistence import CategorySync, Draft, Message, Triage, database
+from email_agent.persistence import CategorySync, Draft, DraftStatus, Message, Triage, database
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
 from email_agent.triage.category_routing import category_destination
@@ -21,7 +21,7 @@ class TriagedEmail:
     local_id: int
     message: EmailMessage
     triage: TriageOutput
-    draft_ready: bool
+    draft_status: DraftStatus | None
 
 
 @dataclass(frozen=True)
@@ -119,7 +119,12 @@ class TriageService:
                         (Draft.message == stored.id) & (Draft.status == "generated")
                     ).execute()
             logger.info("Triaged local message %s as %s", stored.id, triage.category)
-            return TriagedEmail(stored.id, message, triage, Draft.has_reviewable(stored.id))
+            return TriagedEmail(
+                stored.id,
+                message,
+                triage,
+                Draft.visible_status_for_message(stored.id),
+            )
         except Exception as exc:  # noqa: BLE001 - isolate failures within a batch
             logger.info("Category sync failed for local message %s: %s", stored.id, exc)
             return TriageFailure(message, str(exc), stored.id, triage)

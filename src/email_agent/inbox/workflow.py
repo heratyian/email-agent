@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from email_agent.persistence import Draft, Message
+from email_agent.persistence import Draft, DraftStatus, Message
 from email_agent.providers import MailProvider
 from email_agent.providers.models import EmailMessage
 from email_agent.triage.models import TriageOutput
@@ -18,7 +18,7 @@ class InboxItem:
     local_id: int
     message: EmailMessage
     triage: TriageOutput | None
-    draft_ready: bool
+    draft_status: DraftStatus | None
 
 
 class InboxService:
@@ -45,7 +45,7 @@ class InboxService:
                     local_id=stored.id,
                     message=message,
                     triage=stored.triage_value(),
-                    draft_ready=Draft.has_reviewable(stored.id),
+                    draft_status=Draft.visible_status_for_message(stored.id),
                 )
             )
         logger.info("Returning %d inbox messages", len(results))

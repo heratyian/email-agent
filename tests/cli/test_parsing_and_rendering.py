@@ -7,6 +7,7 @@ from email_agent.cli.rendering import (
     inbox_table_row,
     render_inbox_search_response,
 )
+from email_agent.persistence import DraftStatus
 from email_agent.search.models import InboxSearchResponse, InboxSearchResult
 
 
@@ -25,7 +26,7 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
         category="agent/solicitations",
         needs_triage=False,
         requires_reply=True,
-        draft_ready=True,
+        draft_status=DraftStatus.GENERATED,
     )
 
     lines = capsys.readouterr().out.splitlines()
@@ -50,7 +51,7 @@ def test_inbox_table_marks_untriaged_messages_and_leaves_category_empty(capsys):
         category=None,
         needs_triage=True,
         requires_reply=None,
-        draft_ready=False,
+        draft_status=None,
     )
 
     lines = capsys.readouterr().out.splitlines()
@@ -58,6 +59,21 @@ def test_inbox_table_marks_untriaged_messages_and_leaves_category_empty(capsys):
     triage_start = lines[0].index("TRIAGE")
     assert lines[2][category_start:triage_start].strip() == ""
     assert lines[2][triage_start:].startswith("PENDING")
+
+
+def test_inbox_table_marks_uploaded_mailbox_drafts(capsys):
+    inbox_table_row(
+        local_id=177,
+        priority="normal",
+        sender="Sender",
+        subject="Uploaded reply",
+        category="action",
+        needs_triage=False,
+        requires_reply=True,
+        draft_status=DraftStatus.UPLOADED,
+    )
+
+    assert "UPLOADED" in capsys.readouterr().out
 
 
 def test_inbox_cell_uses_terminal_width_for_emojis():
