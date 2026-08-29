@@ -10,6 +10,8 @@ from langsmith import Client
 from pydantic import BaseModel
 
 from email_agent.drafting.drafter import EmailDrafter
+from email_agent.drafting.prompt import draft_system_prompt
+from email_agent.evaluations.fingerprints import prompt_hash
 from email_agent.evaluations.triage import ensure_dataset, load_examples, load_profile
 from email_agent.llm.chat import get_model
 from email_agent.providers.models import EmailMessage, EmailThread
@@ -133,13 +135,20 @@ def drafting_evaluators(judge) -> list[Callable]:
 
 def drafting_metadata(profile) -> dict[str, Any]:
     """Return LangSmith metadata for one drafting evaluation run."""
+
+    prompt = draft_system_prompt(profile.root, profile.agent)
     return {
         "evaluation_profile": profile.name,
         "model_provider": profile.agent.model.provider,
         "model": profile.agent.model.model,
         "draft_prompt": profile.agent.draft_prompt,
+        "prompt_hash": prompt_hash(prompt),
     }
 
+def experiment_prefix(profile) -> str:
+    """Return the prompt-versioned LangSmith experiment prefix."""
+    prompt = draft_system_prompt(profile.root, profile.agent)
+    return f"drafting-{profile.name}-{prompt_hash(prompt)}"
 
 def run_drafting_evaluation(
     profile_name: str = "personal",
@@ -167,6 +176,6 @@ def run_drafting_evaluation(
         drafting_target(drafter),
         data=dataset_name,
         evaluators=drafting_evaluators(judge),
-        experiment_prefix=f"drafting-{profile.name}",
+        experiment_prefix=experiment_prefix(profile),
         metadata=drafting_metadata(profile),
     )

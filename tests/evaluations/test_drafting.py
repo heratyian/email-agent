@@ -180,5 +180,6 @@ def test_drafting_evaluation_uses_profile_and_application_tag(monkeypatch):
     assert client.created[0]["tag_value_ids"] == ["application-tag-value-id"]
     _, values = client.evaluations[0]
     assert values["data"] == "drafting-personal"
-    assert values["experiment_prefix"] == "drafting-personal"
+    assert isinstance(values["experiment_prefix"], str)
+    assert values["experiment_prefix"].startswith("drafting-personal-")
     assert len(values["evaluators"]) == 4
