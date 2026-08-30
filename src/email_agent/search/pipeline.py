@@ -54,7 +54,7 @@ def run_inbox_search(
         embeddings=embeddings,
         limit=candidate_limit,
     )
-    results = filter_search_candidates(account_id, plan, candidates)[: plan.limit]
+    results = filter_search_candidates(account_id, plan, candidates)
     summary = (
         f"Found {len(results)} matching messages."
         if results

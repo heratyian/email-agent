@@ -93,25 +93,29 @@ uv run email-agent search "find recent messages related to my job search"
 uv run email-agent search "what emails from this week need a reply?"
 ```
 
-The `/search` workflow is a read-only hybrid retrieval pipeline. It plans the
-query, retrieves triaged message summaries from structured SQLite filters and
-Chroma, ranks matches, and answers with grounded local message IDs. It searches
-the local cache only and does not change mailbox labels, drafts, or messages.
+`/search` uses one model call to split the request into a semantic query and any
+exact filters the user requested. Chroma finds candidate message IDs from the
+semantic query. SQLite applies the exact filters
+and enforces the result limit. The workflow then displays those stored messages;
+it does not ask a model to rewrite or select the results.
+
+For example, `find the exposed credentials message` is a semantic search. In
+`show urgent messages about credentials`, `credentials` is the semantic query
+and `urgent` is an exact priority filter. Exact filters are used only when the request states them.
 
 ```mermaid
 flowchart TD
-    A[User query] --> B[Plan search]
-    B --> C[Structured local search tool]
-    B --> D[Chroma summary retrieval tool]
-    C --> E[Merge and rank]
-    D --> E
-    E --> F[Synthesize answer with message IDs]
+    A[User query] --> B[Plan semantic query and exact filters]
+    B --> C[Chroma finds candidate message IDs]
+    C --> D[SQLite applies exact filters and limit]
+    D --> E[Display stored messages]
 ```
 
 Triage summaries are embedded instead of raw message bodies to reduce
 PII exposure. Summaries can still contain sensitive information. The Chroma index
 is synchronized incrementally by `triage`, so unchanged messages are not
-embedded again. The read-only `/search` workflow only searches the existing index.
+embedded again. `/search` reads the existing Chroma index and SQLite cache. It
+does not change mailbox labels, drafts, or messages.
 
 ## Conversational graph
 

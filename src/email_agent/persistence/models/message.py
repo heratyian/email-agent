@@ -148,7 +148,7 @@ class Message(BaseModel):
         if candidate_message_ids is not None:
             conditions.append(cls.id.in_(candidate_message_ids))
 
-        rows = (
+        query = (
             Triage.select(Triage, cls)
             .join(cls, JOIN.INNER)
             .where(*conditions)
@@ -156,7 +156,8 @@ class Message(BaseModel):
         )
         if limit is not None:
             query = query.limit(limit)
-        return [(triage.message, triage) for triage in rows]
+
+        return [(triage.message, triage) for triage in query]
 
     @classmethod
     def pending_category_syncs(cls, account_id: str, limit: int = 500) -> list[Message]:

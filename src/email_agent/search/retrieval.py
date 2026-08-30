@@ -97,6 +97,7 @@ def filter_search_candidates(
     rows = Message.search_triaged(
         account_id,
         candidate_message_ids=[candidate.message_id for candidate in candidates],
+        limit=plan.limit,
         sender=plan.sender,
         category=plan.category,
         priority=plan.priority,

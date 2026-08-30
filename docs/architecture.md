@@ -12,7 +12,7 @@ same application services and persistence layer.
 - `inbox/` owns inbox synchronization and message retrieval.
 - `triage/` owns triage output, prompting, model interaction, and workflow logic.
 - `drafting/` owns draft output, prompting, model interaction, and workflow logic.
-- `search/` owns the read-only hybrid inbox retrieval pipeline.
+- `search/` owns planned vector retrieval and exact SQL filtering.
 - `assistant/` owns typed intents, LangChain tool adapters, session context,
   confirmation state, and the conversational LangGraph.
 - `llm/` owns shared model construction, embeddings, prompt utilities, and tracing.
@@ -65,7 +65,8 @@ model again. Other messages in the same batch continue processing.
 
 Triage is idempotent at the account and provider-message boundary. Draft
 generation is always explicit and may replace only a pending local suggestion.
-The read-only `search` workflow searches the vector index but never writes to it.
+The read-only `search` workflow plans one semantic query and optional exact
+filters. Chroma returns candidate message IDs. SQLite applies the filters. Search never writes to either store.
 
 ## Draft lifecycle
 
@@ -95,10 +96,10 @@ Models perform bounded tasks:
 
 - Triage one message and its thread.
 - Draft one suggested reply from a triage and thread.
-- Plan and synthesize read-only hybrid search.
+- Plan a semantic query and explicit filters for read-only search.
 - Select one supported conversational intent.
 
-Model-produced triage, drafts, search answers, and intents use validated
+Model-produced triage, drafts, search plans, and intents use validated
 structured output. Python owns provider calls, loops, retries, persistence,
 category changes, confirmations, and draft upload.
 

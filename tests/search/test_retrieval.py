@@ -49,6 +49,12 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
         "The sender needs a reply.",
         requires_reply=True,
     )
+    second_matching = store_message(
+        "person@example.com",
+        "Another reply request",
+        "Another sender needs a reply.",
+        requires_reply=True,
+    )
     excluded = store_message(
         "person@example.com",
         "Newsletter",
@@ -64,7 +70,7 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
             reason="Vector match.",
             score=score,
         )
-        for message, score in ((matching, 0.9), (excluded, 0.8))
+        for message, score in ((second_matching, 0.95), (matching, 0.9), (excluded, 0.8))
     ]
     monkeypatch.setattr(
         "email_agent.search.pipeline.retrieve_similar_summaries",
@@ -77,6 +83,7 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
             return InboxSearchPlanOutput(
                 semantic_query="reply requested",
                 requires_reply=True,
+                limit=1,
             )
 
     class Model:
@@ -93,8 +100,8 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
     )
 
     assert search["response"].summary == "Found 1 matching messages."
-    assert [result.message_id for result in search["ranked_results"]] == [matching.id]
-    assert search["ranked_results"][0].score == 0.9
+    assert [result.message_id for result in search["ranked_results"]] == [second_matching.id]
+    assert search["ranked_results"][0].score == 0.95
 
 
 def test_embedded_summary_contains_searchable_sender(tmp_path):
