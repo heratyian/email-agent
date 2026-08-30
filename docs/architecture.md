@@ -13,8 +13,8 @@ same application services and persistence layer.
 - `triage/` owns triage output, prompting, model interaction, and workflow logic.
 - `drafting/` owns draft output, prompting, model interaction, and workflow logic.
 - `search/` owns planned vector retrieval and exact SQL filtering.
-- `assistant/` owns typed intents, LangChain tool adapters, session context,
-  confirmation state, and the conversational LangGraph.
+- `assistant/` owns conversational routing, tools, session context, and
+  confirmation state.
 - `llm/` owns shared model construction, embeddings, prompt utilities, and tracing.
 - `persistence/` owns SQLite models, connection management, and migrations.
 - `cli/` owns Typer declarations, the shell, logging, and terminal rendering.
@@ -40,11 +40,10 @@ Typer command ─┐
 Shell command ─┘
 ```
 
-Plain text is interpreted by a structured model call and routed through an
-explicit graph. The graph invokes narrow LangChain tools backed by the same
-application façade as slash commands. The model never receives a provider object,
-database handle, or credential. Triage and provider draft upload require a separate
-confirmation turn; no send-email tool exists.
+For plain text, LangGraph chooses one supported action and calls a narrow
+LangChain tool. The tool uses the same application façade as the slash commands.
+Actions that do not change the mailbox run immediately. Triage and draft upload
+require confirmation. No send-email tool exists.
 
 ## Message workflow
 

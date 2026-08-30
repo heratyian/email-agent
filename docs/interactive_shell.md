@@ -22,6 +22,10 @@ operations and local draft generation run immediately. The assistant cannot send
 email, delete data, or change accounts; use explicit slash commands for other
 supported shell operations.
 
+Triage requires confirmation because the current workflow also synchronizes the
+configured Gmail label or IMAP folder. Generating a draft is local; uploading it
+changes the mailbox.
+
 ## Select an account
 
 If one account is configured, the shell selects it automatically. If several

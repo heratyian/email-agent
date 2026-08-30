@@ -117,30 +117,30 @@ is synchronized incrementally by `triage`, so unchanged messages are not
 embedded again. `/search` reads the existing Chroma index and SQLite cache. It
 does not change mailbox labels, drafts, or messages.
 
-## Conversational graph
+## Conversational assistant
 
-Plain text in the interactive shell runs through a constrained LangGraph. A
-structured intent selects one LangChain tool backed by the same application façade
-as the slash commands. Read operations execute directly. Triage and mailbox draft
-upload enter a pending state and execute only after a separate confirmation turn.
-The application never exposes a send-email tool.
+Plain text in the interactive shell runs through a LangGraph. The graph chooses
+one supported action and calls the same application code as the slash commands.
+Actions that do not change the mailbox run immediately. Triage and draft upload
+wait for confirmation. The assistant cannot send email.
 
-Evaluate its typed intent routing and confirmation policy with
+Evaluate its routing and confirmation policy with
 `uv run email-agent evaluate assistant --profile personal`.
 
 ```mermaid
 flowchart TD
-    A[User text] --> B[Interpret typed intent]
-    B --> C{Route}
-    C -->|Read or local draft| D[Execute LangChain tool]
-    C -->|Triage or upload| E[Prepare confirmation]
-    E --> F{Next turn}
-    F -->|Confirm| G[Execute provider-changing tool]
-    F -->|Cancel| H[Clear pending action]
-    D --> I[Render typed result]
-    G --> I
-    H --> I
+    A[User request] --> B[Choose an action]
+    B --> C{Changes mailbox?}
+    C -->|No| D[Run tool]
+    C -->|Yes| E[Ask for confirmation]
+    E -->|Confirm| D
+    E -->|Cancel| F[Stop]
 ```
+
+The confirmation boundary is a mailbox change. Triage requires confirmation
+because it saves the analysis and synchronizes the configured Gmail label or
+IMAP folder. Draft generation stays local and runs immediately; uploading that
+draft changes the mailbox and requires confirmation.
 
 ## Safety and privacy
 

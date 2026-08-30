@@ -144,17 +144,15 @@ LangSmith datasets are not overwritten automatically.
 
 ## Assistant orchestration evaluation
 
-Run the production structured-intent interpreter against synthetic shell turns:
+Run the assistant router against synthetic shell requests:
 
 ```bash
 uv run email-agent evaluate assistant --profile personal
 ```
 
-The `assistant-personal` dataset covers routing, message-reference resolution,
-argument extraction, confirmation requirements, confirmation and cancellation
-turns, ambiguous references, and unsupported destructive requests. It does not
-execute tools or access a mailbox. This keeps failures attributable to the
-orchestration layer instead of provider, retrieval, or generation behavior.
+The `assistant-personal` dataset covers action selection, message references,
+arguments, confirmations, cancellations, and unsupported requests. It does not
+execute tools or access a mailbox, so failures stay isolated to routing.
 
 The LangSmith experiment reports action, graph route, message reference,
 argument, and confirmation-policy accuracy separately. Add sanitized routing
