@@ -15,7 +15,7 @@ from email_agent.llm.embeddings import get_embedding_model
 from email_agent.persistence import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
 from email_agent.search.pipeline import run_inbox_search
-from email_agent.search.retrieval import make_search_tools, sync_summary_vector_store
+from email_agent.search.retrieval import sync_summary_vector_store
 from email_agent.triage.models import TriageOutput
 
 EVALUATION_ACCOUNT_ID = "search-evaluation@example.test"
@@ -64,7 +64,6 @@ def search_target(pipeline, keys_by_id: dict[int, str]) -> Callable[[dict], dict
             "retrieved_keys": [
                 keys_by_id[item.message_id] for item in result.get("ranked_results", [])
             ],
-            "cited_keys": [keys_by_id[item.message_id] for item in response.results],
             "summary": response.summary,
         }
 
@@ -108,26 +107,11 @@ def exclusion_accuracy(outputs: dict, reference_outputs: dict) -> bool:
     return excluded.isdisjoint(outputs["retrieved_keys"])
 
 
-def citation_validity(outputs: dict, reference_outputs: dict) -> bool:
-    """Score whether every answer citation came from ranked retrieval."""
-    return set(outputs["cited_keys"]).issubset(outputs["retrieved_keys"])
-
-
-def citation_recall(outputs: dict, reference_outputs: dict) -> float:
-    """Score the fraction of relevant retrieved messages cited in the answer."""
-    relevant_retrieved = set(reference_outputs.get("relevant_keys", [])) & set(
-        outputs["retrieved_keys"]
-    )
-    if not relevant_retrieved:
-        return 1.0
-    return len(relevant_retrieved & set(outputs["cited_keys"])) / len(relevant_retrieved)
-
-
 def empty_answer_accuracy(outputs: dict, reference_outputs: dict) -> bool:
-    """Score whether no-match examples return no results and no citations."""
+    """Score whether no-match examples return no results."""
     if reference_outputs.get("relevant_keys"):
         return True
-    return not outputs["retrieved_keys"] and not outputs["cited_keys"]
+    return not outputs["retrieved_keys"]
 
 
 EVALUATORS = [
@@ -136,8 +120,6 @@ EVALUATORS = [
     retrieval_precision,
     top_result_accuracy,
     exclusion_accuracy,
-    citation_validity,
-    citation_recall,
     empty_answer_accuracy,
 ]
 
@@ -181,10 +163,15 @@ def run_search_evaluation(
         embeddings = get_embedding_model(profile.agent.model)
         vector_directory = root / "chroma"
         sync_summary_vector_store(EVALUATION_ACCOUNT_ID, vector_directory, embeddings)
-        tools = make_search_tools(EVALUATION_ACCOUNT_ID, vector_directory, embeddings)
-
         def pipeline(query: str, *, config: dict):
-            return run_inbox_search(model, *tools, query, config=config)
+            return run_inbox_search(
+                model,
+                EVALUATION_ACCOUNT_ID,
+                vector_directory,
+                embeddings,
+                query,
+                config=config,
+            )
 
         return client.evaluate(
             search_target(pipeline, keys_by_id),

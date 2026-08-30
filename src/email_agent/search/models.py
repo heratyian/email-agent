@@ -15,7 +15,7 @@ class InboxSearchPlanOutput(BaseModel):
     priority: str | None = None
     requires_reply: bool | None = None
     requires_escalation: bool | None = None
-    recent_days: int | None = Field(default=14, ge=1, le=365)
+    recent_days: int | None = Field(default=None, ge=1, le=365)
     limit: int = Field(default=8, ge=1, le=20)
     rationale: str
 
@@ -35,22 +35,6 @@ class InboxSearchResult(BaseModel):
     summary: str
     reason: str
     score: float = 0
-    match_explanation: str | None = None
-
-
-class InboxSearchItemOutput(BaseModel):
-    """One model-selected search result and its explanation."""
-
-    message_id: int
-    subject: str
-    explanation: str
-
-
-class InboxSearchOutput(BaseModel):
-    """Model-produced summary and selected search result references."""
-
-    summary: str
-    messages: list[InboxSearchItemOutput] = Field(default_factory=list)
 
 
 class InboxSearchResponse(BaseModel):

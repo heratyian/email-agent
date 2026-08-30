@@ -15,6 +15,8 @@ CREATE TABLE "messages" (
 );
 CREATE UNIQUE INDEX "messages_account_id_provider_message_id"
     ON "messages" ("account_id", "provider_message_id");
+CREATE INDEX "messages_account_id_received_at"
+    ON "messages" ("account_id", "received_at");
 
 CREATE TABLE "category_syncs" (
     "id" INTEGER NOT NULL PRIMARY KEY,

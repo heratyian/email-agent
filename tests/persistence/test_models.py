@@ -75,5 +75,9 @@ def test_initialize_database_migrates_pre_triage_schema(tmp_path):
     assert "triages" in tables
     assert "classifications" not in tables
     assert all(column[1] != "triaged_at" for column in tables["messages"]["columns"])
+    assert any(
+        index[1] == "messages_account_id_received_at"
+        for index in tables["messages"]["indexes"]
+    )
     assert any(index[1] == "triages_message_id" for index in tables["triages"]["indexes"])
     assert any(column[1] == "category_sync_pending" for column in tables["triages"]["columns"])

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_core.tools import tool
 from peewee import JOIN
 
 from email_agent.persistence import Message, Triage
@@ -53,13 +51,13 @@ def summary_document(message: Message, triage: Triage) -> Document:
 def triaged_messages(account_id: str, *, limit: int = 500) -> list[tuple[Message, Triage]]:
     """Return recent triaged messages for one account."""
     rows = (
-        Message.select(Message, Triage)
-        .join(Triage, JOIN.INNER)
+        Triage.select(Triage, Message)
+        .join(Message, JOIN.INNER)
         .where(Message.account_id == account_id)
-        .order_by(Message.received_at.desc())
+        .order_by(Message.received_at.desc(), Message.id.asc())
         .limit(limit)
     )
-    return [(message, Triage.get(Triage.message == message)) for message in rows]
+    return [(triage.message, triage) for triage in rows]
 
 
 def result_from_message(
@@ -87,50 +85,34 @@ def result_from_message(
 
 
 def search_triaged_messages(
-    account_id: str, plan: InboxSearchPlanOutput
+    account_id: str,
+    plan: InboxSearchPlanOutput,
+    *,
+    candidate_message_ids: list[int] | None = None,
 ) -> list[InboxSearchResult]:
-    """Search triaged local messages with deterministic structured filters."""
-    cutoff = None
+    """Apply structured search constraints in SQLite and return matching rows."""
+    received_after = None
     if plan.recent_days is not None:
-        cutoff = datetime.now(UTC) - timedelta(days=plan.recent_days)
-    results = []
-    sender = plan.sender.casefold() if plan.sender else None
-    topic = plan.topic.casefold() if plan.topic else None
-    for message, triage in triaged_messages(account_id):
-        if cutoff and message.received_at < cutoff:
-            continue
-        if sender and sender not in f"{message.from_name or ''} {message.from_address}".casefold():
-            continue
-        if plan.category and triage.category != plan.category:
-            continue
-        if plan.priority and triage.priority != plan.priority:
-            continue
-        if plan.requires_reply is not None and bool(triage.requires_reply) != plan.requires_reply:
-            continue
-        if (
-            plan.requires_escalation is not None
-            and bool(triage.requires_escalation) != plan.requires_escalation
-        ):
-            continue
-        score = 2.0
-        haystack = f"{message.subject} {triage.summary} {triage.intent or ''}".casefold()
-        if topic and any(term in haystack for term in topic.split()):
-            score += 1.0
-        if triage.priority == "high":
-            score += 1.0
-        if triage.requires_escalation:
-            score += 1.0
-        if triage.requires_reply:
-            score += 0.5
-        results.append(
-            result_from_message(
-                message,
-                triage,
-                reason="Matched structured inbox filters.",
-                score=score,
-            )
+        received_after = datetime.now(UTC) - timedelta(days=plan.recent_days)
+    rows = Message.search_triaged(
+        account_id,
+        sender=plan.sender,
+        category=plan.category,
+        priority=plan.priority,
+        requires_reply=plan.requires_reply,
+        requires_escalation=plan.requires_escalation,
+        received_after=received_after,
+        candidate_message_ids=candidate_message_ids,
+        limit=plan.limit if candidate_message_ids is None else None,
+    )
+    return [
+        result_from_message(
+            message,
+            triage,
+            reason="Matched structured inbox filters.",
         )
-    return sorted(results, key=lambda result: result.score, reverse=True)[: plan.limit]
+        for message, triage in rows
+    ]
 
 
 def chroma_collection_name(account_id: str) -> str:
@@ -229,28 +211,3 @@ def retrieve_similar_summaries(
             )
         )
     return results
-
-
-def make_search_tools(account_id: str, persist_directory: Path, embeddings):
-    """Return read-only LangChain tools for inbox search."""
-
-    @tool
-    def search_local_triaged_messages(plan_json: str) -> str:
-        """Search local triaged messages with structured inbox filters."""
-        plan = InboxSearchPlanOutput.model_validate_json(plan_json)
-        results = search_triaged_messages(account_id, plan)
-        return json.dumps([result.model_dump(mode="json") for result in results])
-
-    @tool
-    def retrieve_triaged_message_summaries(query: str, limit: int = 8) -> str:
-        """Retrieve local triaged message summaries with Chroma vector search."""
-        results = retrieve_similar_summaries(
-            account_id,
-            query,
-            persist_directory=persist_directory,
-            embeddings=embeddings,
-            limit=limit,
-        )
-        return json.dumps([result.model_dump(mode="json") for result in results])
-
-    return search_local_triaged_messages, retrieve_triaged_message_summaries

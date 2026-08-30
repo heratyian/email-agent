@@ -1,8 +1,6 @@
 from datetime import UTC, datetime
 
 from email_agent.evaluations.search import (
-    citation_recall,
-    citation_validity,
     empty_answer_accuracy,
     exclusion_accuracy,
     planner_accuracy,
@@ -13,13 +11,7 @@ from email_agent.evaluations.search import (
     seed_search_corpus,
     top_result_accuracy,
 )
-from email_agent.search.models import (
-    InboxSearchItemOutput,
-    InboxSearchOutput,
-    InboxSearchPlanOutput,
-    InboxSearchResponse,
-    InboxSearchResult,
-)
+from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResponse, InboxSearchResult
 
 
 def test_search_target_exposes_stable_keys_from_production_pipeline():
@@ -42,16 +34,6 @@ def test_search_target_exposes_stable_keys_from_production_pipeline():
                     reason="Matched.",
                 )
             ],
-            "output": InboxSearchOutput(
-                summary="One message needs a reply.",
-                messages=[
-                    InboxSearchItemOutput(
-                        message_id=7,
-                        subject="Reply requested",
-                        explanation="The sender asked a question.",
-                    )
-                ],
-            ),
             "response": InboxSearchResponse(
                 summary="One message needs a reply.",
                 results=[
@@ -62,7 +44,6 @@ def test_search_target_exposes_stable_keys_from_production_pipeline():
                         received_at=datetime.now(UTC),
                         summary="A reply is needed.",
                         reason="Matched.",
-                        match_explanation="The sender asked a question.",
                     )
                 ],
             ),
@@ -72,14 +53,12 @@ def test_search_target_exposes_stable_keys_from_production_pipeline():
 
     assert output["plan"]["requires_reply"] is True
     assert output["retrieved_keys"] == ["reply_request"]
-    assert output["cited_keys"] == ["reply_request"]
 
 
 def test_search_evaluators_report_independent_failures():
     outputs = {
         "plan": {"requires_reply": True},
         "retrieved_keys": ["relevant", "irrelevant"],
-        "cited_keys": ["relevant", "invented"],
     }
     reference = {
         "plan": {"requires_reply": True},
@@ -93,21 +72,16 @@ def test_search_evaluators_report_independent_failures():
     assert retrieval_precision(outputs, reference) == 0.5
     assert top_result_accuracy(outputs, reference) is True
     assert exclusion_accuracy(outputs, reference) is False
-    assert citation_validity(outputs, reference) is False
-    assert citation_recall(outputs, reference) == 1.0
     assert empty_answer_accuracy(outputs, reference) is True
 
 
-def test_empty_search_requires_no_retrieval_and_no_citations():
+def test_empty_search_requires_no_retrieval():
     reference = {"relevant_keys": []}
 
     assert retrieval_recall({"retrieved_keys": []}, reference) == 1.0
     assert retrieval_precision({"retrieved_keys": []}, reference) == 1.0
-    assert empty_answer_accuracy({"retrieved_keys": [], "cited_keys": []}, reference) is True
-    assert (
-        empty_answer_accuracy({"retrieved_keys": ["unrelated"], "cited_keys": []}, reference)
-        is False
-    )
+    assert empty_answer_accuracy({"retrieved_keys": []}, reference) is True
+    assert empty_answer_accuracy({"retrieved_keys": ["unrelated"]}, reference) is False
 
 
 def test_checked_in_search_corpus_has_stable_unique_keys(tmp_path):
@@ -138,7 +112,6 @@ class FakeClient:
 
 def test_search_evaluation_uses_serial_blocking_production_pipeline(monkeypatch):
     client = FakeClient()
-    graph = object()
     monkeypatch.setattr("email_agent.evaluations.search.get_model", lambda config: "model")
     monkeypatch.setattr(
         "email_agent.evaluations.search.get_embedding_model", lambda config: "embeddings"
@@ -148,13 +121,6 @@ def test_search_evaluation_uses_serial_blocking_production_pipeline(monkeypatch)
     )
     monkeypatch.setattr(
         "email_agent.evaluations.search.sync_summary_vector_store", lambda *args: None
-    )
-    monkeypatch.setattr(
-        "email_agent.evaluations.search.make_search_tools", lambda *args: ("structured", "vector")
-    )
-    monkeypatch.setattr(
-        "email_agent.evaluations.search.run_inbox_search",
-        lambda model, structured, vector: graph,
     )
 
     result = run_search_evaluation("personal", client=client)

@@ -4,12 +4,8 @@ from types import SimpleNamespace
 from email_agent.application import EmailApplication
 from email_agent.persistence import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
-from email_agent.search.models import (
-    InboxSearchItemOutput,
-    InboxSearchOutput,
-    InboxSearchPlanOutput,
-)
-from email_agent.search.pipeline import build_search_response, ground_output, merge_results
+from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResult
+from email_agent.search.pipeline import build_search_response, rank_results
 from email_agent.search.retrieval import (
     retrieve_similar_summaries,
     search_triaged_messages,
@@ -68,68 +64,79 @@ def test_structured_search_filters_triaged_messages(tmp_path):
     assert [result.subject for result in results] == ["Interview availability"]
 
 
-def test_merge_results_combines_scores_for_same_message():
-    from email_agent.search.models import InboxSearchResult
+def test_structured_search_filters_before_applying_the_result_limit(tmp_path):
+    initialize_database(tmp_path / "email.db")
+    matching = store_message(
+        "person@example.com",
+        "Old reply request",
+        "An older message still needs a reply.",
+        requires_reply=True,
+    )
+    matching.received_at = datetime.now(UTC) - timedelta(days=30)
+    matching.save()
+    for index in range(500):
+        store_message(
+            "person@example.com",
+            f"Newsletter {index}",
+            "A newer message that does not need a reply.",
+        )
 
-    base = InboxSearchResult(
+    results = search_triaged_messages(
+        "person@example.com",
+        InboxSearchPlanOutput(
+            query="what needs a reply",
+            requires_reply=True,
+            limit=1,
+            rationale="Find reply requests.",
+        ),
+    )
+
+    assert [result.subject for result in results] == ["Old reply request"]
+
+
+def test_semantic_ranking_only_includes_eligible_messages():
+    eligible = InboxSearchResult(
         message_id=1,
         from_address="sender@example.com",
         subject="Interview availability",
         received_at=datetime.now(UTC),
         summary="Recruiter asked for availability.",
-        reason="Structured.",
-        score=2,
+        reason="Matched filters.",
     )
+    ineligible = eligible.model_copy(update={"message_id": 2, "subject": "Newsletter"})
 
-    merged = merge_results([base], [base.model_copy(update={"reason": "Vector.", "score": 3})])
-
-    assert len(merged) == 1
-    assert merged[0].score == 5
-    assert "Structured" in merged[0].reason
-    assert "Vector" in merged[0].reason
-
-
-def test_ground_output_discards_unknown_ids_and_restores_subjects():
-    from email_agent.search.models import InboxSearchResult
-
-    result = InboxSearchResult(
-        message_id=7,
-        from_address="sender@example.com",
-        subject="Authoritative subject",
-        received_at=datetime.now(UTC),
-        summary="A grounded summary.",
-        reason="Structured.",
-    )
-    output = InboxSearchOutput(
-        summary="Two possible messages.",
-        messages=[
-            InboxSearchItemOutput(
-                message_id=7,
-                subject="Model-controlled subject",
-                explanation="This one matches.",
-            ),
-            InboxSearchItemOutput(
-                message_id=7,
-                subject="Duplicate",
-                explanation="Duplicate reference.",
-            ),
-            InboxSearchItemOutput(
-                message_id=99,
-                subject="Invented",
-                explanation="Unknown reference.",
-            ),
+    ranked = rank_results(
+        [eligible],
+        [
+            ineligible.model_copy(update={"score": 4}),
+            eligible.model_copy(update={"score": 3}),
         ],
+        has_topic=True,
     )
 
-    grounded = ground_output(output, [result])
-
-    assert [item.message_id for item in grounded.messages] == [7]
-    assert grounded.messages[0].subject == "Authoritative subject"
+    assert [result.message_id for result in ranked] == [1]
+    assert ranked[0].score == 3
 
 
-def test_search_response_combines_explanations_with_authoritative_result_metadata():
-    from email_agent.search.models import InboxSearchResult
+def test_filter_only_ranking_uses_received_date_descending():
+    older = InboxSearchResult(
+        message_id=1,
+        from_address="sender@example.com",
+        subject="Older",
+        received_at=datetime.now(UTC) - timedelta(days=2),
+        summary="Older message.",
+        reason="Matched filters.",
+    )
+    newer = older.model_copy(
+        update={"message_id": 2, "subject": "Newer", "received_at": datetime.now(UTC)}
+    )
 
+    ranked = rank_results([older, newer], [], has_topic=False)
+
+    assert [result.message_id for result in ranked] == [2, 1]
+
+
+def test_search_response_returns_all_ranked_results():
     result = InboxSearchResult(
         message_id=7,
         from_address="legal@example.test",
@@ -140,23 +147,11 @@ def test_search_response_combines_explanations_with_authoritative_result_metadat
         summary="A contract decision is due.",
         reason="Matched.",
     )
-    output = InboxSearchOutput(
-        summary="One contract needs attention.",
-        messages=[
-            InboxSearchItemOutput(
-                message_id=7,
-                subject="Contract approval",
-                explanation="A decision is due tomorrow.",
-            )
-        ],
-    )
+    response = build_search_response([result])
 
-    response = build_search_response(output, [result])
-
-    assert response.summary == "One contract needs attention."
+    assert response.summary == "Found 1 matching messages."
     assert response.results[0].from_name == "Legal Team"
     assert response.results[0].priority == "high"
-    assert response.results[0].match_explanation == "A decision is due tomorrow."
 
 
 def test_summary_vector_store_only_changes_outdated_documents(tmp_path, monkeypatch):

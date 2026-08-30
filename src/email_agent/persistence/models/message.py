@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from peewee import JOIN, AutoField, DateTimeField, TextField
+from collections.abc import Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from peewee import JOIN, AutoField, DateTimeField, TextField, fn
 
 from email_agent.persistence.models.base import BaseModel
 from email_agent.providers.base import CategorySyncState
 from email_agent.providers.models import EmailMessage
 from email_agent.triage.models import TriageOutput
+
+if TYPE_CHECKING:
+    from email_agent.persistence.models.triage import Triage
 
 
 class Message(BaseModel):
@@ -25,7 +32,10 @@ class Message(BaseModel):
 
     class Meta:
         table_name = "messages"
-        indexes = ((("account_id", "provider_message_id"), True),)
+        indexes = (
+            (("account_id", "provider_message_id"), True),
+            (("account_id", "received_at"), False),
+        )
 
     @classmethod
     def upsert_email(cls, email: EmailMessage) -> Message:
@@ -71,7 +81,7 @@ class Message(BaseModel):
             cls.select()
             .join(Triage, join_type=JOIN.LEFT_OUTER)
             .where((cls.account_id == account_id) & Triage.id.is_null())
-            .order_by(cls.received_at.desc())
+            .order_by(cls.received_at.desc(), cls.id.asc())
         )
 
     def to_email(self) -> EmailMessage:
@@ -97,9 +107,59 @@ class Message(BaseModel):
             cls.select()
             .join(Triage)
             .where(cls.account_id == account_id)
-            .order_by(cls.received_at.desc())
+            .order_by(cls.received_at.desc(), cls.id.asc())
             .limit(limit)
         )
+
+    @classmethod
+    def search_triaged(
+        cls,
+        account_id: str,
+        *,
+        sender: str | None = None,
+        category: str | None = None,
+        priority: str | None = None,
+        requires_reply: bool | None = None,
+        requires_escalation: bool | None = None,
+        received_after: datetime | None = None,
+        candidate_message_ids: Sequence[int] | None = None,
+        limit: int | None = None,
+    ) -> list[tuple[Message, Triage]]:
+        """Return triaged messages matching explicit persisted fields."""
+        from email_agent.persistence.models.triage import Triage
+
+        if candidate_message_ids is not None and not candidate_message_ids:
+            return []
+
+        conditions = [cls.account_id == account_id]
+        if sender:
+            normalized_sender = sender.casefold()
+            conditions.append(
+                fn.LOWER(cls.from_name).contains(normalized_sender)
+                | fn.LOWER(cls.from_address).contains(normalized_sender)
+            )
+        if category:
+            conditions.append(Triage.category == category)
+        if priority:
+            conditions.append(Triage.priority == priority)
+        if requires_reply is not None:
+            conditions.append(Triage.requires_reply == requires_reply)
+        if requires_escalation is not None:
+            conditions.append(Triage.requires_escalation == requires_escalation)
+        if received_after is not None:
+            conditions.append(cls.received_at >= received_after)
+        if candidate_message_ids is not None:
+            conditions.append(cls.id.in_(candidate_message_ids))
+
+        query = (
+            Triage.select(Triage, cls)
+            .join(cls, JOIN.INNER)
+            .where(*conditions)
+            .order_by(cls.received_at.desc(), cls.id.asc())
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        return [(triage.message, triage) for triage in query]
 
     @classmethod
     def pending_category_syncs(cls, account_id: str, limit: int = 500) -> list[Message]:
@@ -110,7 +170,7 @@ class Message(BaseModel):
             cls.select()
             .join(Triage)
             .where((cls.account_id == account_id) & Triage.category_sync_pending)
-            .order_by(cls.received_at.desc())
+            .order_by(cls.received_at.desc(), cls.id.asc())
             .limit(limit)
         )
 

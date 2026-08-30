@@ -97,7 +97,6 @@ def test_inbox_search_response_uses_inbox_table_format(capsys):
                     requires_reply=True,
                     summary="A contract decision is due.",
                     reason="Matched structured filters.",
-                    match_explanation="A decision is due tomorrow.",
                 )
             ],
         )
@@ -110,4 +109,4 @@ def test_inbox_search_response_uses_inbox_table_format(capsys):
     assert all(
         value in output for value in ("#12", "HIGH", "Legal Team", "Contract approval", "YES")
     )
-    assert "A decision is due tomorrow." in output
+    assert "A contract decision is due." in output

@@ -146,7 +146,7 @@ def render_inbox_search_response(response: InboxSearchResponse) -> None:
             result.subject,
             category_name(result.category),
             "YES" if result.requires_reply else "NO" if result.requires_reply is False else "—",
-            result.match_explanation or result.summary,
+            result.summary,
         )
         typer.secho(
             "  ".join(_cell(value, width) for value, (_, width) in zip(values, SEARCH_COLUMNS)),
