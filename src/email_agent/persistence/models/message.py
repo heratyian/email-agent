@@ -125,11 +125,8 @@ class Message(BaseModel):
         candidate_message_ids: Sequence[int] | None = None,
         limit: int | None = None,
     ) -> list[tuple[Message, Triage]]:
-        """Return triaged messages matching explicit persisted fields."""
+        """Filter vector-search candidates by exact persisted fields."""
         from email_agent.persistence.models.triage import Triage
-
-        if candidate_message_ids is not None and not candidate_message_ids:
-            return []
 
         conditions = [cls.account_id == account_id]
         if sender:
@@ -151,7 +148,7 @@ class Message(BaseModel):
         if candidate_message_ids is not None:
             conditions.append(cls.id.in_(candidate_message_ids))
 
-        query = (
+        rows = (
             Triage.select(Triage, cls)
             .join(cls, JOIN.INNER)
             .where(*conditions)
@@ -159,7 +156,7 @@ class Message(BaseModel):
         )
         if limit is not None:
             query = query.limit(limit)
-        return [(triage.message, triage) for triage in query]
+        return [(triage.message, triage) for triage in rows]
 
     @classmethod
     def pending_category_syncs(cls, account_id: str, limit: int = 500) -> list[Message]:

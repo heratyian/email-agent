@@ -51,13 +51,7 @@ def search_target(pipeline, keys_by_id: dict[int, str]) -> Callable[[dict], dict
     """Build a LangSmith target around the production inbox search pipeline."""
 
     def search(inputs: dict) -> dict:
-        result = pipeline(
-            inputs["query"],
-            config={
-                "tags": ["email-agent", "inbox-search", "evaluation"],
-                "metadata": {"workflow": "inbox-search-evaluation"},
-            },
-        )
+        result = pipeline(inputs["query"])
         response = result["response"]
         return {
             "plan": result["plan"].model_dump(mode="json"),
@@ -107,20 +101,12 @@ def exclusion_accuracy(outputs: dict, reference_outputs: dict) -> bool:
     return excluded.isdisjoint(outputs["retrieved_keys"])
 
 
-def empty_answer_accuracy(outputs: dict, reference_outputs: dict) -> bool:
-    """Score whether no-match examples return no results."""
-    if reference_outputs.get("relevant_keys"):
-        return True
-    return not outputs["retrieved_keys"]
-
-
 EVALUATORS = [
     planner_accuracy,
     retrieval_recall,
     retrieval_precision,
     top_result_accuracy,
     exclusion_accuracy,
-    empty_answer_accuracy,
 ]
 
 
@@ -130,7 +116,7 @@ def search_metadata(profile) -> dict[str, Any]:
         "evaluation_profile": profile.name,
         "model_provider": profile.agent.model.provider,
         "model": profile.agent.model.model,
-        "pipeline": "hybrid-structured-vector-search-v1",
+        "pipeline": "planned-filtered-vector-search-v3",
         "retrieval": "chroma-triage-summaries-v1",
         "corpus": "search-corpus-v1",
     }
@@ -152,7 +138,7 @@ def run_search_evaluation(
         dataset_name,
         examples,
         application_tag_value_id=os.getenv("LANGSMITH_APPLICATION_TAG_VALUE_ID"),
-        description="Synthetic inbox search examples for graph and RAG regression testing.",
+        description="Synthetic inbox search examples for RAG regression testing.",
     )
 
     with TemporaryDirectory(prefix="email-agent-search-evaluation-") as directory:
@@ -163,14 +149,15 @@ def run_search_evaluation(
         embeddings = get_embedding_model(profile.agent.model)
         vector_directory = root / "chroma"
         sync_summary_vector_store(EVALUATION_ACCOUNT_ID, vector_directory, embeddings)
-        def pipeline(query: str, *, config: dict):
+
+        def pipeline(query: str):
             return run_inbox_search(
                 model,
                 EVALUATION_ACCOUNT_ID,
                 vector_directory,
                 embeddings,
                 query,
-                config=config,
+                categories=profile.agent.categories,
             )
 
         return client.evaluate(

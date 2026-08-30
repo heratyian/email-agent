@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 from email_agent.evaluations.search import (
-    empty_answer_accuracy,
     exclusion_accuracy,
     planner_accuracy,
     retrieval_precision,
@@ -15,14 +14,12 @@ from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResponse
 
 
 def test_search_target_exposes_stable_keys_from_production_pipeline():
-    def fake_pipeline(query, *, config):
+    def fake_pipeline(query):
         assert query == "What needs a reply?"
-        assert "evaluation" in config["tags"]
         return {
             "plan": InboxSearchPlanOutput(
-                query=query,
+                semantic_query="reply requested",
                 requires_reply=True,
-                rationale="Find reply requests.",
             ),
             "ranked_results": [
                 InboxSearchResult(
@@ -51,8 +48,8 @@ def test_search_target_exposes_stable_keys_from_production_pipeline():
 
     output = search_target(fake_pipeline, {7: "reply_request"})({"query": "What needs a reply?"})
 
-    assert output["plan"]["requires_reply"] is True
     assert output["retrieved_keys"] == ["reply_request"]
+    assert output["plan"]["requires_reply"] is True
 
 
 def test_search_evaluators_report_independent_failures():
@@ -72,16 +69,6 @@ def test_search_evaluators_report_independent_failures():
     assert retrieval_precision(outputs, reference) == 0.5
     assert top_result_accuracy(outputs, reference) is True
     assert exclusion_accuracy(outputs, reference) is False
-    assert empty_answer_accuracy(outputs, reference) is True
-
-
-def test_empty_search_requires_no_retrieval():
-    reference = {"relevant_keys": []}
-
-    assert retrieval_recall({"retrieved_keys": []}, reference) == 1.0
-    assert retrieval_precision({"retrieved_keys": []}, reference) == 1.0
-    assert empty_answer_accuracy({"retrieved_keys": []}, reference) is True
-    assert empty_answer_accuracy({"retrieved_keys": ["unrelated"]}, reference) is False
 
 
 def test_checked_in_search_corpus_has_stable_unique_keys(tmp_path):

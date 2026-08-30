@@ -10,6 +10,7 @@
   {
     "inputs": {"query": "Find the message about exposed production credentials."},
     "outputs": {
+      "plan": {"category": null, "priority": null},
       "relevant_keys": ["security_credentials"],
       "top_key": "security_credentials",
       "excluded_keys": ["weekly_digest", "prize_spam"]
@@ -44,6 +45,7 @@
   {
     "inputs": {"query": "Where is the API pagination documentation update?"},
     "outputs": {
+      "plan": {"category": null},
       "relevant_keys": ["api_reference"],
       "top_key": "api_reference",
       "excluded_keys": ["weekly_digest"]

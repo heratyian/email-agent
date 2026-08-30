@@ -18,6 +18,7 @@ def summary_document_text(message: Message, triage: Triage) -> str:
     """Return the PII-reduced text embedded for one triaged message."""
     return "\n".join(
         [
+            f"From: {message.from_name or message.from_address}",
             f"Subject: {message.subject}",
             f"Category: {triage.category or 'none'}",
             f"Priority: {triage.priority}",
@@ -84,34 +85,37 @@ def result_from_message(
     )
 
 
-def search_triaged_messages(
+def filter_search_candidates(
     account_id: str,
     plan: InboxSearchPlanOutput,
-    *,
-    candidate_message_ids: list[int] | None = None,
+    candidates: list[InboxSearchResult],
 ) -> list[InboxSearchResult]:
-    """Apply structured search constraints in SQLite and return matching rows."""
+    """Apply the plan's exact filters to vector-search candidates in SQL."""
     received_after = None
     if plan.recent_days is not None:
         received_after = datetime.now(UTC) - timedelta(days=plan.recent_days)
     rows = Message.search_triaged(
         account_id,
+        candidate_message_ids=[candidate.message_id for candidate in candidates],
         sender=plan.sender,
         category=plan.category,
         priority=plan.priority,
         requires_reply=plan.requires_reply,
         requires_escalation=plan.requires_escalation,
         received_after=received_after,
-        candidate_message_ids=candidate_message_ids,
-        limit=plan.limit if candidate_message_ids is None else None,
     )
-    return [
-        result_from_message(
+    results_by_id = {
+        message.id: result_from_message(
             message,
             triage,
-            reason="Matched structured inbox filters.",
+            reason="Matched the semantic query and exact filters.",
         )
         for message, triage in rows
+    }
+    return [
+        results_by_id[candidate.message_id].model_copy(update={"score": candidate.score})
+        for candidate in candidates
+        if candidate.message_id in results_by_id
     ]
 
 

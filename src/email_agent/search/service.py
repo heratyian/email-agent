@@ -16,7 +16,7 @@ class InboxSearchService:
         self.model = model
 
     def search(self, query: str) -> InboxSearchResponse:
-        """Run hybrid local retrieval and return grounded search results."""
+        """Plan and run a filtered vector search over triaged messages."""
         embeddings = get_embedding_model(self.account.model)
         result = run_inbox_search(
             self.model,
@@ -24,14 +24,12 @@ class InboxSearchService:
             self.settings.root / "data" / "chroma",
             embeddings,
             query,
+            categories=self.account.categories,
             config={
                 "tags": ["email-agent", "inbox-search"],
                 "metadata": {
-                    "workflow": "natural-language-inbox-search",
+                    "workflow": "inbox-search",
                     "account_id": self.account_id,
-                    "model_provider": self.account.model.provider,
-                    "model": self.account.model.model,
-                    "retrieval": "chroma-triage-summaries",
                 },
             },
         )

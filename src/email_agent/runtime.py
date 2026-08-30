@@ -65,7 +65,7 @@ class RuntimeFactory:
         return self._build(account_id, account, model=model, drafter=drafter)
 
     def for_search(self, account_id: str) -> AccountRuntime:
-        """Build a runtime for model-assisted inbox search."""
+        """Build a runtime for planned inbox search."""
         account = self.settings.account(account_id)
         return self._build(account_id, account, model=get_model(account.model))
 

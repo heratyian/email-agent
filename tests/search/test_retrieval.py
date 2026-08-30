@@ -5,11 +5,11 @@ from email_agent.application import EmailApplication
 from email_agent.persistence import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
 from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResult
-from email_agent.search.pipeline import build_search_response, rank_results
+from email_agent.search.pipeline import run_inbox_search
 from email_agent.search.retrieval import (
     retrieve_similar_summaries,
-    search_triaged_messages,
     summary_document,
+    summary_document_text,
     sync_summary_vector_store,
 )
 from email_agent.triage.models import TriageOutput
@@ -41,117 +41,68 @@ def store_message(account_id, subject, summary, *, priority="normal", requires_r
     return message
 
 
-def test_structured_search_filters_triaged_messages(tmp_path):
-    initialize_database(tmp_path / "email.db")
-    store_message(
-        "person@example.com",
-        "Interview availability",
-        "A recruiter asked for interview availability.",
-        requires_reply=True,
-    )
-    store_message("person@example.com", "Newsletter", "A product newsletter.")
-
-    results = search_triaged_messages(
-        "person@example.com",
-        InboxSearchPlanOutput(
-            query="what needs reply",
-            requires_reply=True,
-            recent_days=14,
-            rationale="Find replies.",
-        ),
-    )
-
-    assert [result.subject for result in results] == ["Interview availability"]
-
-
-def test_structured_search_filters_before_applying_the_result_limit(tmp_path):
+def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypatch):
     initialize_database(tmp_path / "email.db")
     matching = store_message(
         "person@example.com",
-        "Old reply request",
-        "An older message still needs a reply.",
+        "Reply requested",
+        "The sender needs a reply.",
         requires_reply=True,
     )
-    matching.received_at = datetime.now(UTC) - timedelta(days=30)
-    matching.save()
-    for index in range(500):
-        store_message(
-            "person@example.com",
-            f"Newsletter {index}",
-            "A newer message that does not need a reply.",
-        )
-
-    results = search_triaged_messages(
+    excluded = store_message(
         "person@example.com",
-        InboxSearchPlanOutput(
-            query="what needs a reply",
-            requires_reply=True,
-            limit=1,
-            rationale="Find reply requests.",
-        ),
+        "Newsletter",
+        "A general newsletter.",
+    )
+    candidates = [
+        InboxSearchResult(
+            message_id=message.id,
+            from_address=message.from_address,
+            subject=message.subject,
+            received_at=message.received_at,
+            summary="Candidate summary.",
+            reason="Vector match.",
+            score=score,
+        )
+        for message, score in ((matching, 0.9), (excluded, 0.8))
+    ]
+    monkeypatch.setattr(
+        "email_agent.search.pipeline.retrieve_similar_summaries",
+        lambda *args, **kwargs: candidates,
     )
 
-    assert [result.subject for result in results] == ["Old reply request"]
+    class Planner:
+        def invoke(self, prompt, *, config):
+            assert "exact database filters" in prompt
+            return InboxSearchPlanOutput(
+                semantic_query="reply requested",
+                requires_reply=True,
+            )
 
+    class Model:
+        def with_structured_output(self, output_type):
+            assert output_type is InboxSearchPlanOutput
+            return Planner()
 
-def test_semantic_ranking_only_includes_eligible_messages():
-    eligible = InboxSearchResult(
-        message_id=1,
-        from_address="sender@example.com",
-        subject="Interview availability",
-        received_at=datetime.now(UTC),
-        summary="Recruiter asked for availability.",
-        reason="Matched filters.",
-    )
-    ineligible = eligible.model_copy(update={"message_id": 2, "subject": "Newsletter"})
-
-    ranked = rank_results(
-        [eligible],
-        [
-            ineligible.model_copy(update={"score": 4}),
-            eligible.model_copy(update={"score": 3}),
-        ],
-        has_topic=True,
+    search = run_inbox_search(
+        Model(),
+        "person@example.com",
+        tmp_path / "chroma",
+        object(),
+        "Which messages need a reply?",
     )
 
-    assert [result.message_id for result in ranked] == [1]
-    assert ranked[0].score == 3
+    assert search["response"].summary == "Found 1 matching messages."
+    assert [result.message_id for result in search["ranked_results"]] == [matching.id]
+    assert search["ranked_results"][0].score == 0.9
 
 
-def test_filter_only_ranking_uses_received_date_descending():
-    older = InboxSearchResult(
-        message_id=1,
-        from_address="sender@example.com",
-        subject="Older",
-        received_at=datetime.now(UTC) - timedelta(days=2),
-        summary="Older message.",
-        reason="Matched filters.",
-    )
-    newer = older.model_copy(
-        update={"message_id": 2, "subject": "Newer", "received_at": datetime.now(UTC)}
-    )
+def test_embedded_summary_contains_searchable_sender(tmp_path):
+    initialize_database(tmp_path / "email.db")
+    message = store_message("person@example.com", "Update", "A project update.")
+    triage = Triage.get(Triage.message == message)
 
-    ranked = rank_results([older, newer], [], has_topic=False)
-
-    assert [result.message_id for result in ranked] == [2, 1]
-
-
-def test_search_response_returns_all_ranked_results():
-    result = InboxSearchResult(
-        message_id=7,
-        from_address="legal@example.test",
-        from_name="Legal Team",
-        subject="Contract approval",
-        received_at=datetime.now(UTC),
-        priority="high",
-        summary="A contract decision is due.",
-        reason="Matched.",
-    )
-    response = build_search_response([result])
-
-    assert response.summary == "Found 1 matching messages."
-    assert response.results[0].from_name == "Legal Team"
-    assert response.results[0].priority == "high"
+    assert "From: sender@example.com" in summary_document_text(message, triage)
 
 
 def test_summary_vector_store_only_changes_outdated_documents(tmp_path, monkeypatch):
