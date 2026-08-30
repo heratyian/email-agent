@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import typer
 from wcwidth import wcswidth, wcwidth
 
@@ -9,6 +11,7 @@ from email_agent.triage.workflow import TriageFailure
 
 INBOX_COLUMNS = (
     ("ID", 6),
+    ("RECEIVED", 10),
     ("PRIORITY", 8),
     ("FROM", 22),
     ("SUBJECT", 42),
@@ -20,6 +23,7 @@ INBOX_COLUMNS = (
 
 SEARCH_COLUMNS = (
     ("ID", 6),
+    ("RECEIVED", 10),
     ("PRIORITY", 8),
     ("FROM", 22),
     ("SUBJECT", 36),
@@ -81,6 +85,7 @@ def inbox_table_header() -> None:
 def inbox_table_row(
     *,
     local_id: int | str,
+    received_at: datetime,
     priority: str,
     sender: str,
     subject: str,
@@ -93,6 +98,7 @@ def inbox_table_row(
     """Render one aligned inbox row with predictable user-facing fields."""
     values = (
         f"#{local_id}",
+        received_at.date().isoformat(),
         priority.upper(),
         sender,
         subject,
@@ -120,6 +126,7 @@ def render_inbox_items(items) -> None:
         priority = triage.priority if triage else "—"
         inbox_table_row(
             local_id=item.local_id,
+            received_at=item.message.received_at,
             priority=priority,
             sender=item.message.from_name or item.message.from_address,
             subject=item.message.subject,
@@ -141,6 +148,7 @@ def render_inbox_search_response(response: InboxSearchResponse) -> None:
         priority = result.priority or "—"
         values = (
             f"#{result.message_id}",
+            result.received_at.date().isoformat(),
             priority.upper(),
             result.from_name or result.from_address,
             result.subject,
@@ -166,6 +174,7 @@ def render_triage_results(results) -> int:
             triage = result.triage
             inbox_table_row(
                 local_id=result.local_id or "?",
+                received_at=result.message.received_at,
                 priority=triage.priority if triage else "error",
                 sender=result.message.from_name or result.message.from_address,
                 subject=f"{result.message.subject}: {result.error}",
@@ -179,6 +188,7 @@ def render_triage_results(results) -> int:
         succeeded += 1
         inbox_table_row(
             local_id=result.local_id,
+            received_at=result.message.received_at,
             priority=result.triage.priority,
             sender=result.message.from_name or result.message.from_address,
             subject=result.message.subject,

@@ -20,6 +20,7 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
     inbox_table_header()
     inbox_table_row(
         local_id=175,
+        received_at=datetime(2026, 8, 30, tzinfo=UTC),
         priority="low",
         sender="Karen Hall",
         subject="40 hours for Big Green Company",
@@ -34,8 +35,10 @@ def test_inbox_table_has_labeled_aligned_columns(capsys):
     assert "REPLY" in lines[0]
     assert "DRAFT" in lines[0]
     assert "TRIAGE" in lines[0]
+    assert "RECEIVED" in lines[0]
     assert "#175" in lines[2]
     assert "Karen Hall" in lines[2]
+    assert "2026-08-30" in lines[2]
     assert "agent/solicitations" in lines[2]
     assert "YES" in lines[2]
     assert "READY" in lines[2]
@@ -45,6 +48,7 @@ def test_inbox_table_marks_untriaged_messages_and_leaves_category_empty(capsys):
     inbox_table_header()
     inbox_table_row(
         local_id=176,
+        received_at=datetime(2026, 8, 29, tzinfo=UTC),
         priority="—",
         sender="New Sender",
         subject="Not processed yet",
@@ -64,6 +68,7 @@ def test_inbox_table_marks_untriaged_messages_and_leaves_category_empty(capsys):
 def test_inbox_table_marks_uploaded_mailbox_drafts(capsys):
     inbox_table_row(
         local_id=177,
+        received_at=datetime(2026, 8, 28, tzinfo=UTC),
         priority="normal",
         sender="Sender",
         subject="Uploaded reply",
@@ -91,7 +96,7 @@ def test_inbox_search_response_uses_inbox_table_format(capsys):
                     from_address="legal@example.test",
                     from_name="Legal Team",
                     subject="Contract approval",
-                    received_at=datetime.now(UTC),
+                    received_at=datetime(2026, 8, 27, tzinfo=UTC),
                     category="action",
                     priority="high",
                     requires_reply=True,
@@ -106,7 +111,9 @@ def test_inbox_search_response_uses_inbox_table_format(capsys):
     assert "Two messages need attention." in output
     assert "Search · 1 messages" in output
     assert all(label in output for label in ("ID", "PRIORITY", "FROM", "MATCH"))
+    assert "RECEIVED" in output
     assert all(
         value in output for value in ("#12", "HIGH", "Legal Team", "Contract approval", "YES")
     )
+    assert "2026-08-27" in output
     assert "A contract decision is due." in output
