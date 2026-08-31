@@ -124,6 +124,7 @@ git diff --check
 
 Additional references:
 
+- [Demo Video](https://youtu.be/zusSEB_APxU)
 - [Interactive shell](docs/interactive_shell.md)
 - [Categories and mailbox organization](docs/categories.md)
 - [Gmail OAuth](docs/gmail_oauth_setup.md)
