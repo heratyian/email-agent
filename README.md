@@ -62,10 +62,16 @@ flowchart TD
     J --> K
 ```
 
-Search is a bounded RAG workflow. One structured model call separates the request
-into a semantic query and explicit filters. Chroma retrieves triage-summary
-candidates, then SQLite applies the filters and loads the stored messages. Search
-does not ask a model to rewrite the results.
+## How search works
+
+Search combines vector similarity with exact database filters. One structured model call separates the request
+into a semantic query and explicit filters. Chroma, the vector database, uses
+vector similarity search to retrieve triage-summary candidates. SQLite then
+applies the filters and loads the stored messages.
+
+```text
+User query → structured search plan → Chroma vector search → SQLite filters → stored messages
+```
 
 ## Design notes
 
