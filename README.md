@@ -21,7 +21,7 @@ Try the complete workflow in the interactive shell:
 ```text
 > /inbox
 > /triage
-> /search show urgent messages that need a reply
+> /search high priority messages
 > draft a short reply to message 3
 > upload that draft
 ```
