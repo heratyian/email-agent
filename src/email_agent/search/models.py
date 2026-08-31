@@ -33,7 +33,6 @@ class InboxSearchResult(BaseModel):
     requires_escalation: bool | None = None
     summary: str
     reason: str
-    score: float = 0
 
 
 class InboxSearchResponse(BaseModel):

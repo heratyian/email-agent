@@ -15,7 +15,15 @@ from email_agent.search.retrieval import (
 from email_agent.triage.models import TriageOutput
 
 
-def store_message(account_id, subject, summary, *, priority="normal", requires_reply=False):
+def store_message(
+    account_id,
+    subject,
+    summary,
+    *,
+    priority="normal",
+    requires_reply=False,
+    received_at=None,
+):
     message = Message.upsert_email(
         EmailMessage(
             provider_id=subject,
@@ -24,7 +32,7 @@ def store_message(account_id, subject, summary, *, priority="normal", requires_r
             from_address="sender@example.com",
             subject=subject,
             text_body="Body",
-            received_at=datetime.now(UTC) - timedelta(days=1),
+            received_at=received_at or datetime.now(UTC) - timedelta(days=1),
         )
     )
     Triage.save_for(
@@ -68,9 +76,8 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
             received_at=message.received_at,
             summary="Candidate summary.",
             reason="Vector match.",
-            score=score,
         )
-        for message, score in ((second_matching, 0.95), (matching, 0.9), (excluded, 0.8))
+        for message in (second_matching, matching, excluded)
     ]
     monkeypatch.setattr(
         "email_agent.search.pipeline.retrieve_similar_summaries",
@@ -101,7 +108,61 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
 
     assert search["response"].summary == "Found 1 matching messages."
     assert [result.message_id for result in search["ranked_results"]] == [second_matching.id]
-    assert search["ranked_results"][0].score == 0.95
+
+
+def test_search_results_are_ordered_newest_first(tmp_path, monkeypatch):
+    initialize_database(tmp_path / "email.db")
+    now = datetime.now(UTC)
+    older = store_message(
+        "person@example.com",
+        "Older high priority message",
+        "An older important message.",
+        priority="high",
+        received_at=now - timedelta(days=2),
+    )
+    newer = store_message(
+        "person@example.com",
+        "Newer high priority message",
+        "A newer important message.",
+        priority="high",
+        received_at=now - timedelta(hours=1),
+    )
+    candidates = [
+        InboxSearchResult(
+            message_id=message.id,
+            from_address=message.from_address,
+            subject=message.subject,
+            received_at=message.received_at,
+            summary="Candidate summary.",
+            reason="Vector match.",
+        )
+        for message in (older, newer)
+    ]
+    monkeypatch.setattr(
+        "email_agent.search.pipeline.retrieve_similar_summaries",
+        lambda *args, **kwargs: candidates,
+    )
+
+    class Planner:
+        def invoke(self, prompt, *, config):
+            return InboxSearchPlanOutput(
+                semantic_query="important",
+                priority="high",
+            )
+
+    class Model:
+        def with_structured_output(self, output_type):
+            return Planner()
+
+    search = run_inbox_search(
+        Model(),
+        "person@example.com",
+        tmp_path / "chroma",
+        object(),
+        "Get my latest high priority messages",
+    )
+
+    assert [result.message_id for result in search["ranked_results"]] == [newer.id, older.id]
 
 
 def test_embedded_summary_contains_searchable_sender(tmp_path):
@@ -160,7 +221,7 @@ def test_summary_vector_store_only_changes_outdated_documents(tmp_path, monkeypa
 
 def test_vector_retrieval_only_searches_the_existing_index(tmp_path, monkeypatch):
     class ReadOnlyStore:
-        def similarity_search_with_score(self, query, *, k):
+        def similarity_search(self, query, *, k):
             assert query == "important messages"
             assert k == 5
             return []

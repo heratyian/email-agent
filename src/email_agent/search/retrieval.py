@@ -66,7 +66,6 @@ def result_from_message(
     triage: Triage,
     *,
     reason: str,
-    score: float = 0,
 ) -> InboxSearchResult:
     """Build a search result from persisted message and triage rows."""
     return InboxSearchResult(
@@ -81,7 +80,6 @@ def result_from_message(
         requires_escalation=triage.requires_escalation,
         summary=triage.summary,
         reason=reason,
-        score=score,
     )
 
 
@@ -105,18 +103,13 @@ def filter_search_candidates(
         requires_escalation=plan.requires_escalation,
         received_after=received_after,
     )
-    results_by_id = {
-        message.id: result_from_message(
+    return [
+        result_from_message(
             message,
             triage,
             reason="Matched the semantic query and exact filters.",
         )
         for message, triage in rows
-    }
-    return [
-        results_by_id[candidate.message_id].model_copy(update={"score": candidate.score})
-        for candidate in candidates
-        if candidate.message_id in results_by_id
     ]
 
 
@@ -195,9 +188,9 @@ def retrieve_similar_summaries(
 ) -> list[InboxSearchResult]:
     """Retrieve triaged message summaries with Chroma vector search."""
     store = open_summary_vector_store(account_id, persist_directory, embeddings)
-    documents = store.similarity_search_with_score(query, k=limit)
+    documents = store.similarity_search(query, k=limit)
     results = []
-    for document, distance in documents:
+    for document in documents:
         metadata = document.metadata
         results.append(
             InboxSearchResult(
@@ -212,7 +205,6 @@ def retrieve_similar_summaries(
                 requires_escalation=bool(metadata["requires_escalation"]),
                 summary=str(metadata["summary"]),
                 reason="Matched the vector search over triaged message summaries.",
-                score=max(0.0, 2.0 - float(distance)),
             )
         )
     return results
