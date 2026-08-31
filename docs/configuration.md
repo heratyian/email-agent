@@ -1,10 +1,12 @@
-# Configuration
+# Gmail and IMAP setup
 
-Email Agent loads private account configuration from `accounts.yaml` in the
-project root. Each top-level key under `accounts` is the mailbox's canonical
-email address.
+The demo needs no mailbox credentials. Use this guide only to connect a real
+account. Private account configuration is stored in the ignored `accounts.yaml`
+file.
 
-Use the account generator instead of writing a new account from scratch:
+## Gmail
+
+Create an account from the personal template:
 
 ```bash
 uv run email-agent account add you@gmail.com \
@@ -14,69 +16,73 @@ uv run email-agent account add you@gmail.com \
   --model gpt-5.4-mini
 ```
 
-The generator creates or updates `accounts.yaml` and creates editable
-triage and drafting prompts under `prompts/`. Both locations are ignored
-by Git.
-
-Validate configuration before connecting to a provider:
+Complete [Gmail OAuth setup](gmail_oauth_setup.md), then validate and connect:
 
 ```bash
 uv run email-agent account validate
+uv run email-agent inbox --account you@gmail.com
 ```
 
-## Account fields
+Gmail uses `gmail.modify` to synchronize category labels and `gmail.compose` to
+create drafts. Email Agent does not request permission to send email.
 
-Every account defines:
+## IMAP
 
-- `provider`: `gmail` or `imap`. The `demo` command owns the reserved synthetic
-  `demo` provider configuration.
-- `model`: the model provider, model name, temperature, and optional base URL.
-- `triage_prompt`: account-specific triage and escalation guidance.
-- `draft_prompt`: account-specific tone, style, and drafting guidance.
-- `categories`: category names and descriptions.
+Create an account and name the environment variables that hold its credentials:
 
-Gmail accounts also define paths for the OAuth client and token files. Keep these
-files under the ignored `secrets/` directory. See [Gmail OAuth setup](gmail_oauth_setup.md).
+```bash
+uv run email-agent account add you@example.com \
+  --provider imap \
+  --template personal \
+  --model-provider openai \
+  --model gpt-5.4-mini \
+  --imap-host imap.example.com
+```
 
-IMAP accounts define:
+The generator writes environment-variable names to `accounts.yaml`. Put their
+credential values in `.env`:
 
-- `imap_host` and optional `imap_port`.
-- `username_env` and `password_env`, which name environment variables.
-- Optional `category_action`, set to `copy` or `move`.
+```dotenv
+YOU_EXAMPLE_COM_USERNAME=you@example.com
+YOU_EXAMPLE_COM_PASSWORD=your-app-password
+```
 
-Store the IMAP username and password in `.env`. Store only their environment
-variable names in `accounts.yaml`.
+Use the environment-variable names in the account configuration:
 
-## Model providers
+```yaml
+imap_host: imap.example.com
+username_env: YOU_EXAMPLE_COM_USERNAME
+password_env: YOU_EXAMPLE_COM_PASSWORD
+```
 
-Supported model providers are `openai`, `ollama`, and `compatible`.
+IMAP copies categorized messages into folders by default. Copy mode requires
+`UIDPLUS`. Optional move mode requires `MOVE`; the application does not use an
+unsafe fallback when either capability is missing.
 
-An Ollama model uses `OLLAMA_BASE_URL` when no `base_url` is configured. The
-default is `http://localhost:11434`.
+## Account configuration
 
-A compatible OpenAI-style provider requires `model.base_url`.
+Each account specifies:
 
-## Database location
+- its mailbox provider;
+- its chat model;
+- account-specific triage and drafting prompt files; and
+- category names and descriptions.
 
-Email Agent stores workflow metadata in `data/email_agent.db` by default. Set
-`EMAIL_AGENT_DATABASE` in `.env` to use another path. A relative path is resolved
-from the project root.
+The account generator creates editable prompts under the ignored `prompts/`
+directory. Category keys become Gmail labels or IMAP folder paths. See
+[Categories and mailbox organization](categories.md).
 
-The database stores synchronized plain-text email bodies alongside message and
-workflow metadata. Commands that review an uploaded draft retrieve the current
-source message from the provider.
+Supported model providers are `openai`, `ollama`, and OpenAI-compatible APIs.
+Ollama uses `OLLAMA_BASE_URL` when no model base URL is configured.
 
-## Prompts
+Run `uv run email-agent account validate` after changing configuration. Use
+`uv run email-agent --help` for the complete account command reference.
 
-The application always supplies its safety rules and task instructions. The
-triage prompt adds account-specific triage and escalation
-guidance. The draft prompt adds account-specific tone, style, and reply guidance.
+## Local data
 
-Category descriptions belong in `accounts.yaml`; do not duplicate the category
-taxonomy in either prompt.
+SQLite stores synchronized message bodies and workflow state in
+`data/email_agent.db`. Chroma stores the triage-summary search index under
+`data/`. Set `EMAIL_AGENT_DATABASE` in `.env` to change the SQLite path.
 
-## Categories
-
-Category keys become Gmail labels or IMAP folder paths. See
-[Categories and mailbox organization](categories.md) for naming rules and provider
-behavior.
+Treat both stores as private mailbox data. Deleting them also deletes local
+triages and draft suggestions.
