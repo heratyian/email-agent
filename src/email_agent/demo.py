@@ -112,7 +112,7 @@ def _install_account(root: Path) -> bool:
     )
     (prompt_root / "draft.md").write_text(
         "Write concise, professional, and friendly replies. Do not invent availability, "
-        "approvals, prices, deadlines, or commitments."
+        "approvals, prices, deadlines, or commitments. "
         "Just use my name (Demo Person) in the signature."
     )
     raw["accounts"][DEMO_ACCOUNT_ID] = {
