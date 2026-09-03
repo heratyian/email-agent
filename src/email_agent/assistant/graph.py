@@ -47,6 +47,14 @@ class AssistantConversation:
         }
         return result["turn"]
 
+    def remember_message_ids(self, message_ids: list[int]) -> None:
+        """Make message IDs from an explicit shell command available to later turns."""
+        self.state["last_message_ids"] = message_ids
+
+    def remember_draft_message_id(self, message_id: int | None) -> None:
+        """Make a draft selected by an explicit shell command available to later turns."""
+        self.state["last_draft_message_id"] = message_id
+
     def _build_graph(self):
         graph = StateGraph(AssistantState)
         graph.add_node("interpret", self._interpret)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shlex
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import typer
 
@@ -29,6 +29,8 @@ class ShellSession:
     account_id: str | None
     verbosity: int = 0
     trace_model: bool = False
+    last_message_ids: list[int] = field(default_factory=list)
+    last_draft_message_id: int | None = None
 
 
 class ShellUsageError(ValueError):
@@ -165,11 +167,7 @@ class InteractiveShell:
         return self.session.account_id
 
     def _natural_language(self, line: str) -> None:
-        account_id = self._active()
-        if self._assistant is None or self._assistant_account_id != account_id:
-            self._assistant = self.handlers.assistant(account_id)
-            self._assistant_account_id = account_id
-        turn = self._assistant.invoke(line)
+        turn = self._assistant_for_active_account().invoke(line)
         if turn.kind == "inbox":
             render_inbox_items(turn.payload)
         elif turn.kind == "search":
@@ -187,6 +185,28 @@ class InteractiveShell:
                 typer.echo("No draft suggestions to review.")
         else:
             typer.echo(turn.message or "I could not complete that request.")
+
+    def _assistant_for_active_account(self):
+        """Return the conversational assistant for the active shell account."""
+        account_id = self._active()
+        if self._assistant is None or self._assistant_account_id != account_id:
+            self._assistant = self.handlers.assistant(account_id)
+            self._assistant_account_id = account_id
+            self._assistant.remember_message_ids(self.session.last_message_ids)
+            self._assistant.remember_draft_message_id(self.session.last_draft_message_id)
+        return self._assistant
+
+    def _remember_message_ids(self, message_ids: list[int]) -> None:
+        """Share message context between slash commands and the assistant."""
+        self.session.last_message_ids = message_ids
+        if self._assistant is not None:
+            self._assistant.remember_message_ids(message_ids)
+
+    def _remember_draft_message_id(self, message_id: int | None) -> None:
+        """Share draft context between slash commands and the assistant."""
+        self.session.last_draft_message_id = message_id
+        if self._assistant is not None:
+            self._assistant.remember_draft_message_id(message_id)
 
     def _require_active_message(self, message_id: int) -> int:
         account_id = self.handlers.message_account(message_id)
@@ -206,12 +226,14 @@ class InteractiveShell:
         account_id = self._active()
         typer.echo(f"Checking {account_id}...")
         items = self.handlers.run_inbox(account_id, limit)
+        self._remember_message_ids([item.local_id for item in items])
         render_inbox_items(items)
 
     def _search(self, args: list[str]) -> None:
         if not args:
             raise ShellUsageError("/search QUERY")
         response = self.handlers.search_inbox(self._active(), " ".join(args))
+        self._remember_message_ids([result.message_id for result in response.results])
         render_inbox_search_response(response)
 
     def _triage(self, args: list[str]) -> None:
@@ -224,6 +246,10 @@ class InteractiveShell:
         if message_id is not None:
             self._require_active_message(message_id)
         results = self.handlers.triage(self._active(), message_id=message_id)
+        # updates recent message IDs only when it returns identified messages
+        result_message_ids = [result.local_id for result in results if result.local_id is not None]
+        if result_message_ids:
+            self._remember_message_ids(result_message_ids)
         render_triage_results(results)
 
     @staticmethod
@@ -237,7 +263,9 @@ class InteractiveShell:
 
     def _show(self, args: list[str]) -> None:
         message_id = self._require_active_message(self._one_id(args, "/show LOCAL_ID"))
-        render_message_details(self.handlers.show_message(message_id), show_confidence=False)
+        details = self.handlers.show_message(message_id)
+        self._remember_message_ids([message_id])
+        render_message_details(details, show_confidence=False)
 
     def _draft(self, args: list[str]) -> None:
         if not args:
@@ -248,12 +276,15 @@ class InteractiveShell:
             raise ShellUsageError("/draft LOCAL_ID [instruction]") from exc
         self._require_active_message(message_id)
         self.handlers.generate_draft(message_id, " ".join(args[1:]) or None)
+        self._remember_message_ids([message_id])
+        self._remember_draft_message_id(message_id)
         typer.secho(f"✓ Draft ready for message #{message_id}.", fg=typer.colors.GREEN)
 
     def _drafts(self, args: list[str]) -> None:
         if args:
             raise ShellUsageError("/drafts")
         rows = self.handlers.list_drafts(self._active())
+        self._remember_draft_message_id(rows[0].message_id if len(rows) == 1 else None)
         if not rows:
             typer.echo("No draft suggestions to review.")
             return
@@ -310,6 +341,8 @@ class InteractiveShell:
         if args[0] not in accounts:
             raise ValueError(f"Unknown account: {args[0]}")
         self.session.account_id = args[0]
+        self.session.last_message_ids = []
+        self.session.last_draft_message_id = None
         self._assistant = None
         self._assistant_account_id = None
         typer.echo(f"Account: {args[0]}")
