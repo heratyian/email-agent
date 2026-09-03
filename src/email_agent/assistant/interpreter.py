@@ -5,6 +5,7 @@ from email_agent.assistant.models import AssistantIntentOutput, AssistantState
 ASSISTANT_PROMPT = """Interpret one request to an email assistant.
 
 Choose exactly one supported action: inbox, search, show, triage, draft, drafts, or upload.
+- confirm and cancel are reserved for deterministic pending-action handling. Do not choose them.
 - inbox synchronizes and lists newest mail. Preserve a requested limit.
 - search finds existing synchronized and triaged mail. Put the complete search request in query.
 - show requires a local message ID.
@@ -28,9 +29,9 @@ def interpret_assistant_request(planner, state: AssistantState) -> AssistantInte
     """Interpret one turn, including deterministic pending-action responses."""
     normalized = state["user_input"].strip().casefold()
     if state.get("pending_action") and normalized in CONFIRMATIONS:
-        return AssistantIntentOutput(action="unsupported", explanation="confirm")
+        return AssistantIntentOutput(action="confirm")
     if state.get("pending_action") and normalized in CANCELLATIONS:
-        return AssistantIntentOutput(action="unsupported", explanation="cancel")
+        return AssistantIntentOutput(action="cancel")
     if state.get("pending_action"):
         return AssistantIntentOutput(
             action="unsupported",
@@ -48,8 +49,6 @@ def interpret_assistant_request(planner, state: AssistantState) -> AssistantInte
 
 def assistant_route(intent: AssistantIntentOutput) -> str:
     """Return the graph route selected for one interpreted intent."""
-    if intent.explanation in {"confirm", "cancel"}:
-        return intent.explanation
     return {
         "triage": "prepare_triage",
         "upload": "prepare_upload",

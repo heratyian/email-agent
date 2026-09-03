@@ -16,6 +16,8 @@ class AssistantIntentOutput(BaseModel):
         "draft",
         "drafts",
         "upload",
+        "confirm",
+        "cancel",
         "unsupported",
     ]
     message_id: int | None = None

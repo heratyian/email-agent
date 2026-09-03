@@ -47,7 +47,7 @@ def test_assistant_target_uses_production_interpretation_and_route():
     assert output["requires_confirmation"] is True
 
 
-def test_assistant_target_handles_confirmation_without_calling_model():
+def test_assistant_target_handles_pending_responses_without_calling_model():
     class ModelMustNotRun:
         def with_structured_output(self, schema):
             return FakePlanner(None)
@@ -61,7 +61,19 @@ def test_assistant_target_handles_confirmation_without_calling_model():
         }
     )
 
+    assert output["action"] == "confirm"
     assert output["route"] == "confirm"
+    assert output["requires_confirmation"] is False
+
+    output = target(
+        {
+            "user_input": "cancel",
+            "pending_action": {"action": "upload", "message_id": 42},
+        }
+    )
+
+    assert output["action"] == "cancel"
+    assert output["route"] == "cancel"
     assert output["requires_confirmation"] is False
 
 
