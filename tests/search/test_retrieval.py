@@ -5,13 +5,13 @@ from email_agent.application import EmailApplication
 from email_agent.persistence import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
 from email_agent.search.models import InboxSearchPlanOutput, InboxSearchResult
-from email_agent.search.pipeline import run_inbox_search
 from email_agent.search.retrieval import (
     retrieve_similar_summaries,
     summary_document,
     summary_document_text,
     sync_summary_vector_store,
 )
+from email_agent.search.service import run_inbox_search
 from email_agent.triage.models import TriageOutput
 
 
@@ -80,7 +80,7 @@ def test_search_filters_vector_candidates_with_the_model_plan(tmp_path, monkeypa
         for message in (second_matching, matching, excluded)
     ]
     monkeypatch.setattr(
-        "email_agent.search.pipeline.retrieve_similar_summaries",
+        "email_agent.search.service.retrieve_similar_summaries",
         lambda *args, **kwargs: candidates,
     )
 
@@ -139,7 +139,7 @@ def test_search_results_are_ordered_newest_first(tmp_path, monkeypatch):
         for message in (older, newer)
     ]
     monkeypatch.setattr(
-        "email_agent.search.pipeline.retrieve_similar_summaries",
+        "email_agent.search.service.retrieve_similar_summaries",
         lambda *args, **kwargs: candidates,
     )
 

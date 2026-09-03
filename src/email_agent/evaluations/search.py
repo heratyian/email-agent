@@ -14,8 +14,8 @@ from email_agent.llm.chat import get_model
 from email_agent.llm.embeddings import get_embedding_model
 from email_agent.persistence import Message, Triage, initialize_database
 from email_agent.providers.models import EmailMessage
-from email_agent.search.pipeline import run_inbox_search
 from email_agent.search.retrieval import sync_summary_vector_store
+from email_agent.search.service import run_inbox_search
 from email_agent.triage.models import TriageOutput
 
 EVALUATION_ACCOUNT_ID = "search-evaluation@example.test"
