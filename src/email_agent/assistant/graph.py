@@ -20,6 +20,8 @@ class AssistantConversation:
         self.planner = model.with_structured_output(AssistantIntentOutput)
         self.tools = make_assistant_tools(application)
         self.graph = self._build_graph()
+        # TODO: refactor state into langraph checkpointing,
+        # so that the conversation can be resumed after a restart
         self.state: AssistantState = {
             "account_id": account_id,
             "pending_action": None,
