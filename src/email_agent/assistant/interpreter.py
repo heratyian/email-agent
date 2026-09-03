@@ -49,7 +49,8 @@ def interpret_assistant_request(planner, state: AssistantState) -> AssistantInte
 
 def assistant_route(intent: AssistantIntentOutput) -> str:
     """Return the graph route selected for one interpreted intent."""
-    return {
-        "triage": "prepare_triage",
-        "upload": "prepare_upload",
-    }.get(intent.action, intent.action)
+    if intent.action == "triage":
+        return "prepare_triage"
+    if intent.action == "upload":
+        return "prepare_upload"
+    return intent.action
